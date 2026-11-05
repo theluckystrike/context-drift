@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.1.2';
+const VERSION = '0.1.3';
 
 const RULES = {
   CD001: { id: 'CD001', name: 'command-drift', defaultSeverity: 'error', description: 'A documented command does not exist in the repo. Error for `npm run X`, `pnpm run X` and `make X` checked against the manifest at the right level; warning for every heuristic form (bare `pnpm X`, `yarn X`, `npm test`, just, task, cargo, uv/poetry).' },
@@ -1109,33 +1109,52 @@ const CLAUSE_PIVOT = /\b(?:until|unless|before|once|but|otherwise|then)\b/gi;
 const NEG_FLIP = /\b(?:without|forget(?:ting)?|fail(?:ing)?\s+to|skip(?:ping)?|omit(?:ting)?|ignor(?:e|ing))\b/gi;
 /** A comma clause that still belongs to what came before (a list, an example, a relative clause). */
 const CONTINUES = /^\s*(?:or|and|nor|which|that|who|where|whose|e_g|i_e|eg|ie|for example|for instance|such as|like|including|especially|etc|neither|not)\b/i;
+/** An imperative after a comma or "and" starts a new instruction: "Never edit generated files, run `X` instead". */
+const IMPERATIVE = /^\s*(?:(?:always|just|instead|then|also|first|only|please)\s+)?(?:run|use|call|invoke|execute|regenerate|rebuild|try|prefer|start|launch|type)\b/i;
+/** A clause that opens with a bare negation and an aside: "Do not, under any circumstances, run `X`" stays negated. */
+const BARE_NEG = /^\s*(?:please\s+)?(?:do not|don'?t|never|not|no)(?:\s+ever)?\s*$/i;
+/** An opening phrase that names the alternative: "Instead of `X`, use `Y`", "Unlike `X`, `Y` runs everything". */
+const INTRO_ALT = /^\s*(?:instead of|unlike|rather than|as opposed to|compared (?:to|with))\b[^,]*$/i;
+/** After a flip word, only these words may stand before the span for it to be a requirement: "skip `X`", "forget to run `X`", "without first running the `X`". */
+const FLIP_DIRECT = /^\s*(?:(?:first|also|always|ever)\s+)?(?:(?:to\s+)?(?:run|running|call|calling|invoke|invoking|execute|executing|use|using)\s+)?(?:(?:the|a)\s+)?$/i;
 function lastEnd(re, t) {
   re.lastIndex = 0;
   let m, end = -1;
   while ((m = re.exec(t))) end = m.index + m[0].length;
   return end;
 }
+const words = (t) => t.trim().split(/\s+/).filter(Boolean).length;
 /** The clause that governs a span: the text after the last clause break before it. */
 function governingClause(b) {
   let cut = lastEnd(CLAUSE_PIVOT, b);
   const comma = b.lastIndexOf(',');
   if (comma > cut) {
     const rest = b.slice(comma + 1);
-    if (!CONTINUES.test(rest) && rest.trim().split(/\s+/).filter(Boolean).length >= 2) cut = comma + 1;
+    // a new clause after a comma: 2+ words that do not continue a list, an imperative verb,
+    // or the span right after an "instead of / unlike / rather than" opening phrase
+    const head = b.slice(Math.max(cut, 0)).split(',')[0];
+    if (!CONTINUES.test(rest) && (words(rest) >= 2 || (IMPERATIVE.test(rest) && !BARE_NEG.test(head)))) cut = comma + 1;
+    else if (words(rest) === 0 && INTRO_ALT.test(b.slice(Math.max(cut, 0), comma))) cut = comma + 1;
   }
-  // "There is no Docker setup and the entry point is `src/server.ts`": a new clause with its own subject
+  // "There is no Docker setup and the entry point is `src/server.ts`": a new clause with its own subject.
+  // "Do not push to main and run `X`": an imperative after "and", when 4+ words come before it.
   const and = lastEnd(/\band\b/gi, b);
-  if (and > cut && b.slice(and).trim().split(/\s+/).filter(Boolean).length >= 3 && !CONTINUES.test(b.slice(and))) cut = and;
+  if (and > cut && !CONTINUES.test(b.slice(and))) {
+    const rest = b.slice(and);
+    if (words(rest) >= 3 || (IMPERATIVE.test(rest) && words(b.slice(Math.max(cut, 0), and - 3)) >= 4)) cut = and;
+  }
   return cut > 0 ? b.slice(cut) : b;
 }
-/** True when the clause before a span negates it. A negation followed by a flip word ("never ... without") is a requirement. */
+/** True when the clause before a span negates it. A negation followed by a flip word that governs the span
+ * ("never commit without running `X`", "do not skip `X`") is a requirement. When the flip word has its own
+ * object ("do not skip tests by calling `X`"), the span is the forbidden means and stays negated. */
 function negatedBefore(b) {
   const t = governingClause(b);
   if (!NEG_BEFORE.test(t)) return false;
   NEG_FLIP.lastIndex = 0;
   let m, flip = null;
   while ((m = NEG_FLIP.exec(t))) flip = m;
-  if (flip && NEG_BEFORE.test(t.slice(0, flip.index).replace(/\s+$/, ' x'))) return NEG_BEFORE.test(t.slice(flip.index + flip[0].length));
+  if (flip && NEG_BEFORE.test(t.slice(0, flip.index).replace(/\s+$/, ' x'))) return !FLIP_DIRECT.test(t.slice(flip.index + flip[0].length));
   return true;
 }
 function negated(lineText, col, endCol, prevText) {
@@ -1450,6 +1469,11 @@ const UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f
 /** Replaces control and bidi characters with visible \uXXXX escapes (tabs and line breaks stay). */
 function safeText(s) {
   return String(s).replace(UNSAFE_CHARS, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+/** For one-line fields in terminal and CI output (file names, messages): also escapes line breaks and tabs,
+ * so a file name with a newline cannot print a line of its own (a forged `::error` workflow command). */
+function safeLine(s) {
+  return safeText(s).replace(/[\n\t]/g, (c) => (c === '\n' ? '\\u000a' : '\\u0009'));
 }
 function mkDiag(ruleId, severity, rel, line, col, endCol, message, extra) {
   const d = { ruleId, severity, file: rel, line, column: col, endLine: line, endColumn: endCol, message: safeText(message) };
@@ -2960,6 +2984,7 @@ module.exports = {
   invalidateManifests,
   MAX_LINE_CHARS,
   safeText,
+  safeLine,
   // exported for tests
   _internal: { tokenizeShell, scanDocument, parseVer, satisfiesRange, claimFitsRange, compileGlob, globMatch, parseTomlLite, parseMakefile, parseJustfile, parseTaskfile, classifyPathCandidate, runGit, isGitignored },
 };

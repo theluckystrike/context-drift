@@ -54,7 +54,13 @@ Each finding has a stable rule id, a severity, and an exact range.
 - `uv run X` and `poetry run X` when `X` is not in `[project.scripts]` or `[tool.poetry.scripts]` and is not a declared dependency.
 - It understands `cd dir && …`, environment prefixes (`FOO=1 …`), and `$ ` prompts. In `console` blocks, and in shell blocks that use `$ ` prompts, only prompt lines are commands; the rest is output. `make test    Run the tests` listings stop at the description.
 - It does not flag built-ins (`npm install`, `pnpm add`, `bun test`, `cargo build`, …) or placeholders (`npm run <script>`).
-- It skips negated or historical text. The words *no, not, never, don't, avoid, instead of, deprecated, removed, old* (and similar) in the clause before the command, or on the previous line of the same paragraph, turn the check off: "There is no root `pnpm dev`", "don't run `npm run eject`". A new clause starts after *until, unless, before, but, then*, after a comma, and after *and* when a new subject follows. So "Do not open a PR until `make check` passes" is checked. A negation followed by *without, forget, fail to, skip* is a requirement, so "Never commit without running `npm run lint`" and "Don't forget to run `npm run typecheck`" are checked too. Words after the command ("is deprecated", "(removed)", "no longer works") count only when the command is their subject.
+- It skips negated or historical text. The words *no, not, never, don't, avoid, instead of, deprecated, removed, old* (and similar) in the clause before the command, or on the previous line of the same paragraph, turn the check off: "There is no root `pnpm dev`", "don't run `npm run eject`". A new clause starts:
+  - after *until, unless, before, but, then*: "Do not open a PR until `make check` passes" is checked;
+  - after a comma, when two or more words follow it, or an imperative such as *run, use, call, regenerate*: "Never edit generated files, run `npm run codegen` instead" is checked. A list ("`a`, `b` or `c`") and an aside after a bare negation ("Do not, under any circumstances, run `X`") stay negated;
+  - after the comma that ends an opening *instead of, unlike, rather than* phrase: in "Instead of `npm run old`, use `npm run new`" and "Unlike `npm run old`, `npm run full` runs everything" the second command is checked;
+  - after *and*, when three or more words follow it, or when an imperative follows four or more words: "Do not push to main and run `npm run lint` before merging" is checked, "Never build and run `X`" is not.
+- A negation followed by *without, forget, fail to, skip, omit, ignore* is a requirement only when that word governs the command directly: "Never commit without running `npm run lint`", "Don't forget to run `npm run typecheck`" and "Do not skip `npm run typecheck`" are checked. In "Do not skip tests by calling `npm run skip-tests`" the command is the forbidden means, so it stays skipped. Words after the command ("is deprecated", "(removed)", "no longer works") count only when the command is their subject.
+- These are word rules, not a grammar. Unusual sentences can still be misread, in either direction.
 - It skips commands that the text says run somewhere else: "inside its package directory", "from the workspace root", "from the library".
 - In a sparse checkout it skips workspace-wide forms, because the packages may not be checked out.
 - If the instruction file is a skill (`SKILL.md`), this rule is off. Skills usually describe other projects.
@@ -204,7 +210,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npx -y github:theluckystrike/context-drift#v0.1.2 --format github
+      - run: npx -y github:theluckystrike/context-drift#v0.1.3 --format github
 ```
 
 `--format github` prints `::error`, `::warning` and `::notice` workflow commands, so findings show up inline on the PR diff. Add `--stale` and `fetch-depth: 0` on the checkout step if you want CD006.
@@ -213,14 +219,14 @@ jobs:
 
 - Zero runtime dependencies. One small CommonJS engine is shared by the extension and the CLI.
 - Fast. A 5,000-file repo takes about 20 ms on an M-series Mac. It never reads `node_modules`, `.git`, `dist`, `build`, `vendor`, `target` or `.venv`, and it skips nested git repos and worktrees.
-- Safe on hostile repos. Globs from the repo are never turned into regular expressions; a linear-time matcher is used instead. Every line regex is linear. Inputs are capped: 1 MB per file, 4,000 characters per line, 200 globs, 20,000 code spans, 2,000 findings per file and 32 targets per `make` command. Work stops at the finding cap, and a run stops after 20 s. Tests time the adversarial inputs from both independent reviews at about 1 MB: the first review's must take under 50 ms of CPU each, the second review's under 300 ms (the slowest takes about 70 ms on an M-series Mac). Other inputs can be slower; the 20 s budget bounds them.
-- Text output (`--format text`) and diagnostic messages escape control and bidi characters from the repo as `\uXXXX`, so a hostile file name or path cannot rewrite your terminal or CI log.
+- Safe on hostile repos. Globs from the repo are never turned into regular expressions; a linear-time matcher is used instead. Every line regex is linear. Inputs are capped: 1 MB per file, 4,000 characters per line, 200 globs, 20,000 code spans, 2,000 findings per file and 32 targets per `make` command. Work stops at the finding cap, and a run stops after 20 s. Tests time the adversarial inputs from both independent reviews at about 1 MB: the first review's must take under 250 ms of CPU each (they take 1–50 ms; the quadratic versions took 5 s and more), the second review's under 300 ms (the slowest takes about 70 ms on an M-series Mac). Other inputs can be slower; the 20 s budget bounds them.
+- Text output (`--format text`) and diagnostic messages escape control and bidi characters from the repo as `\uXXXX`. In text output, line breaks and tabs in file names and messages are escaped too, so each finding is exactly one line. `--format github` percent-encodes line breaks, `%`, `,` and `:`. So a hostile file name or path cannot rewrite your terminal or print its own line (such as a forged `::error` command) into a CI log.
 - git runs only asynchronously, read-only, with `--no-optional-locks`, `core.fsmonitor=false` and a 3 s timeout per call; a hung git is killed.
 - Robust: binary, huge, CRLF, BOM, Unicode and broken (`package.json` with comments) files never crash it.
 
 ## Precision
 
-Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository). 0.1.2 gives exactly the same warnings and errors on the 184 local folders below (re-run on 2026-11-05: none added, none removed).
+Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository). 0.1.2 gives exactly the same warnings and errors on the 184 local folders below (re-run on 2026-11-05: none added, none removed). 0.1.3 was compared with 0.1.2 on the same 184 folders (2026-11-05): the same 264 findings, none added, none removed.
 
 - **Real source repositories** from the review (a webdriverio checkout, promptbook, a small CLI repo): 4 findings, all true. 0.1.0 reported 4 true and 14 false findings there.
 - **184 local folders with 3,629 instruction files** (git off, as in the review):
@@ -231,6 +237,7 @@ Measured for 0.1.1 on the same material as the independent review of 0.1.0 (deta
   - Overall, about 1 finding in 10 is false.
 - **The 48 adversarial cases** from the review: all 48 pass (0.1.0: 24 false positives, 1 false negative).
 - **The 53 cases of the second review** (0.1.1): 50 pass (0.1.1: 42). Of its 17 recall cases, 0.1.2 reports the expected finding in all 17 (0.1.1: 10). The three cases that do not match are known: `.gitignore` negation (not modeled), a span with terminal control characters (not read as a command), and one case where the review's own expectation was wrong ("Go 1.20 or newer" against `go 1.22` is true drift and is reported). These cases are regression tests in `test/review-r2.test.js`.
+- **The 51 cases of the third review** (0.1.2): 0.1.3 passes 42 (0.1.2: 34). The 9 that do not match are known false negatives, none of them a false finding: `npm run foo`/`bar` are placeholders and never checked (the same sentence with real names passes); *add, write, may* anywhere in a sentence still hide a path (3 cases, precision first); include/import cycles in Makefile, justfile and Taskfile (3 cases) and `"scripts": null` report nothing; a `make` target with control characters is not read as a target. These cases are regression tests in `test/review-r3.test.js`.
 
 ## Privacy
 

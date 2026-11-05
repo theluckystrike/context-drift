@@ -134,14 +134,17 @@ async function main(argv) {
 
   for (const x of skipped) {
     const shown = path.relative(cwd, x.absFile).split(path.sep).join('/') || x.file;
-    const sh = engine.safeText(shown);
-    process.stderr.write(x.partial ? `context-drift: ${sh}: ${x.reason}.\n` : `context-drift: skipped ${sh}: ${x.reason}.\n`);
+    const sh = engine.safeLine(shown);
+    process.stderr.write(x.partial ? `context-drift: ${sh}: ${engine.safeLine(x.reason)}.\n` : `context-drift: skipped ${sh}: ${engine.safeLine(x.reason)}.\n`);
   }
   const counts = { error: 0, warning: 0, info: 0 };
   for (const d of all) counts[d.severity]++;
   const display = (d) => path.relative(cwd, d.absFile).split(path.sep).join('/') || d.file;
-  // text and annotation output go to terminals and CI logs: no control or bidi characters from repo file names
-  const shownName = (d) => engine.safeText(display(d));
+  // text and annotation output go to terminals and CI logs: no control or bidi characters from repo file names.
+  // Text output has one line per finding, so line breaks and tabs in a file name are escaped too.
+  const shownName = (d) => engine.safeLine(display(d));
+  // github output: ghEscapeProp turns line breaks into %0A, which GitHub decodes back into the real file name
+  const ghName = (d) => engine.safeText(display(d));
 
   if (o.format === 'json') {
     process.stdout.write(JSON.stringify({
@@ -159,13 +162,13 @@ async function main(argv) {
   } else if (o.format === 'github') {
     const cmd = { error: 'error', warning: 'warning', info: 'notice' };
     for (const d of all) {
-      process.stdout.write(`::${cmd[d.severity]} file=${ghEscapeProp(shownName(d))},line=${d.line + 1},col=${d.column + 1},endLine=${d.endLine + 1},endColumn=${d.endColumn + 1},title=${ghEscapeProp(`Context Drift ${d.ruleId}`)}::${ghEscapeData(d.message)}\n`);
+      process.stdout.write(`::${cmd[d.severity]} file=${ghEscapeProp(ghName(d))},line=${d.line + 1},col=${d.column + 1},endLine=${d.endLine + 1},endColumn=${d.endColumn + 1},title=${ghEscapeProp(`Context Drift ${d.ruleId}`)}::${ghEscapeData(d.message)}\n`);
     }
     process.stdout.write(`context-drift: ${filesChecked} instruction file(s), ${counts.error} error(s), ${counts.warning} warning(s), ${counts.info} info\n`);
   } else {
     if (!o.quiet) {
       for (const d of all) {
-        process.stdout.write(`${shownName(d)}:${d.line + 1}:${d.column + 1}: ${d.severity} ${d.ruleId} ${d.message}\n`);
+        process.stdout.write(`${shownName(d)}:${d.line + 1}:${d.column + 1}: ${d.severity} ${d.ruleId} ${engine.safeLine(d.message)}\n`);
       }
     }
     process.stdout.write(`context-drift: ${filesChecked} instruction file(s) checked in ${elapsed} ms: ${counts.error} error(s), ${counts.warning} warning(s), ${counts.info} info\n`);

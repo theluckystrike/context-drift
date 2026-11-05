@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "Context Drift for AGENTS.md & CLAUDE.md",
   "description": "Finds stale facts in AGENTS.md, CLAUDE.md, GEMINI.md, Cursor and Copilot rules: missing npm scripts, make targets and paths, the wrong package manager, wrong Node/Python/Go versions. Local, no network.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",

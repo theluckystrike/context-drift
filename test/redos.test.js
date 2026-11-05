@@ -1,7 +1,8 @@
 'use strict';
 // Every adversarial input from the 0.1.0 review (CDR-01, CDR-02), scaled to about 1 MB.
 // Lines are kept just under the 4,000-character cap so the parsers and regexes really run on them.
-// Each case must finish in under 50 ms of CPU time (best of 5 runs). CPU time, not wall time, so that
+// Each case must finish in under 250 ms of CPU time (best of 5 runs). The quadratic versions took 5 s and more,
+// so 250 ms still catches them with room for a busy machine (the slowest case takes 25-50 ms). CPU time, not wall time, so that
 // `node --test` running files in parallel on a busy machine does not fail the test.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -58,11 +59,11 @@ test('warm up the engine', () => {
 });
 
 for (const [name, files] of Object.entries(CASES)) {
-  test(`ReDoS: ${name} runs in < 50 ms on ~1 MB`, () => {
+  test(`ReDoS: ${name} runs in < 250 ms on ~1 MB`, () => {
     const r = tempRepo(files);
     try {
       const { ms } = best(r.dir);
-      assert.ok(ms < 50, `${name}: ${ms.toFixed(1)} ms`);
+      assert.ok(ms < 250, `${name}: ${ms.toFixed(1)} ms`);
     } finally { r.cleanup(); }
   });
 }

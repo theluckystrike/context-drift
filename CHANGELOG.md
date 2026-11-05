@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.3 (2026-11-05)
+
+Fixes from the third independent review.
+
+### Rules
+- *skip, omit, ignore, forget, fail to, without* after a negation make a requirement only when they govern the command directly ("Do not skip `npm run typecheck`", "Never commit without first running `npm run lint`"). "Do not skip tests by calling `npm run skip-tests`" and "Avoid skipping hooks with `npm run commit:nohooks`" are negated again; 0.1.2 reported them as CD001 errors.
+- A comma followed by an imperative (*run, use, call, regenerate, …*) starts a new clause: "Never edit generated files, run `npm run codegen` instead" and "Instead of yarn, use `npm run boot`" are checked. So is the command after an opening "Instead of / Unlike / Rather than `X`," phrase, and an imperative after *and* that follows four or more words ("Do not push to main and run `npm run lint`"). Lists and "Do not, under any circumstances, run `X`" stay negated.
+
+### Precision
+- On the 184 local folders of the precision measurement, 0.1.3 gives the same 264 findings as 0.1.2: none added, none removed.
+
+### Safety
+- Text output escapes line breaks and tabs in file names and messages, so a folder name with a newline cannot print its own line (a forged `::error` workflow command) into a CI log.
+
+### Tests
+- The third review's 51 cases are regression tests; 10 more negation-scope cases and a CLI test with a newline folder name.
+- The 1 MB ReDoS timing tests allow 250 ms of CPU per case (they take 1–50 ms; the regressions they guard against took 5 s and more), so a busy machine no longer fails them.
+
 ## 0.1.2 (2026-11-05)
 
 Fixes from the second independent review.
