@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 
 const RULES = {
   CD001: { id: 'CD001', name: 'command-drift', defaultSeverity: 'error', description: 'A documented command does not exist in the repo. Error for `npm run X`, `pnpm run X` and `make X` checked against the manifest at the right level; warning for every heuristic form (bare `pnpm X`, `yarn X`, `npm test`, just, task, cargo, uv/poetry).' },
@@ -90,6 +90,7 @@ function posixJoin(a, b) {
 }
 /** Normalizes a relative posix path. Returns null when it escapes the root. */
 function normalizeRel(p) {
+  if (p === null || p === undefined) return null; // an inner join already escaped the root
   const out = [];
   for (const seg of String(p).split('/')) {
     if (seg === '' || seg === '.') continue;
@@ -859,7 +860,9 @@ const SHELL_LANGS = new Set(['', 'sh', 'bash', 'shell', 'zsh', 'fish', 'console'
 const PROMPT_LANGS = new Set(['console', 'shell-session', 'sh-session', 'shellsession', 'terminal']);
 
 const DIRECTIVE_RE = /context-drift-disable(-next-line|-line)?(?![\w-])([^\n]*)/;
-const LINK_RE = /!?\[((?:[^\[\]\\]|\\.)*)\]\(\s*(<[^>\n]*>|[^\s)]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
+// The destination run is matched atomically ((?=(x+))\3): giving back characters can never help. It also stops
+// at "](" (never part of a real target). Without both, a long line of "[a](" takes quadratic time.
+const LINK_RE = /!?\[((?:[^\[\]\\]|\\.)*)\]\(\s*(<[^>\n]*>|(?=((?:[^\s)\]]|\](?!\())+))\3)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
 
 function applyDirective(doc, text, line) {
   const m = DIRECTIVE_RE.exec(text);
@@ -1065,8 +1068,18 @@ function isDisabled(doc, ruleId, line) {
 /* ---------- negation / intent heuristics ---------- */
 
 const NEG_BEFORE = /(?:\b(?:no|not|never|don'?t|doesn'?t|do not|does not|isn'?t|aren'?t|wasn'?t|weren'?t|cannot|can'?t|won'?t|avoid|instead of|rather than|no longer|deprecated|removed|former|formerly|previously|legacy|replaced|stop using|stopped using|without|unlike|versus|vs\.?|nor|old|obsolete|used to|switched from|moved from|migrated from|renamed from|upgraded? from|migrating from|forbidden|banned|prohibited)\b|~~)[^.;!?]*$/i;
-const NEG_AFTER = /^(?:[^.;!?]*?\b(?:is|was|are|were|has been|have been|got)\s+(?:now\s+)?(?:removed|deleted|deprecated|gone|renamed|replaced|obsolete|retired|dropped|forbidden|banned)\b|\s*(?:\(|—|–|-|:)?\s*(?:deprecated|removed|old|legacy|obsolete|no longer)\b|[^.;!?]*\bno longer\b|[^.;!?]*\b(?:doesn'?t|does not|won'?t|will not)\s+(?:exist|work)\b|\s*~~)/i;
-const CREATE_BEFORE = /\b(?:create|creates|created|creating|add|adds|adding|new|generate[sd]?|generating|write|writes|written|writing|output|outputs|emit|emits|touch|mkdir|scaffold|will be|would be|e[._]g[._]?|eg|i[._]e[._]?|for example|for instance|such as|like|examples?|look for|check for|search for|detect|whether|either|any of|optionally|optional|if (?:you )?(?:have|need|want)|if present|if it exists|save (?:it )?(?:to|as)|rename(?:d)? (?:it )?to|move(?:d)? (?:it )?to|copy (?:it )?to|produces?|into|goes to|lands in|named|called|make sure|ensure|ensures|expects?|may|might|could|would|regenerate[sd]?|regenerating|rebuild|exports?|retained in|re-?create[sd]?|codegen|branch(?:es)?|sibling|defaults? to|for a starter with|naming|ending in|ends? (?:with|in)|end in|emitted|suffix(?:ed)?|prefix(?:ed)?|stored|saved|persisted|cached|remembered|locally|logged|organi[sz]ed by|by category|rewrites?|overwrites?|replays? from|reads? back|submodules?|subpaths?|wildcard)\b[^.;!?]*$/i;
+/** "is deprecated", "(removed)", "no longer works": only when the span itself is the subject (at most 3 words between). */
+const NEG_AFTER = /^(?:\s*(?:[\w-]+\s+){0,3}?(?:is|was|are|were|has been|have been|got)\s+(?:now\s+)?(?:removed|deleted|deprecated|gone|renamed|replaced|obsolete|retired|dropped|forbidden|banned)\b|\s*(?:\(|—|–|-|:)?\s*(?:deprecated|removed|old|legacy|obsolete|no longer)\b|\s*(?:[\w-]+\s+){0,3}?no longer\b|\s*(?:[\w-]+\s+){0,2}?(?:doesn'?t|does not|won'?t|will not)\s+(?:exist|work)\b|\s*~~)/i;
+/** Words that make the whole sentence hypothetical, an example or a pattern: anywhere earlier in the sentence. */
+const CREATE_BEFORE = /\b(?:create|creates|created|creating|add|adds|adding|generate[sd]?|generating|write|writes|written|writing|emit|emits|touch|mkdir|scaffold|will be|would be|e[._]g[._]?|eg|i[._]e[._]?|for example|for instance|such as|examples?|look for|check for|search for|detect|whether|any of|optionally|optional|if (?:you )?(?:have|need|want)|if present|if it exists|save (?:it )?(?:to|as)|rename(?:d)? (?:it )?to|move(?:d)? (?:it )?to|copy (?:it )?to|produces?|goes to|lands in|named|called|make sure|ensure|ensures|expects?|may|might|could|would|regenerate[sd]?|regenerating|rebuild|exports?|retained in|re-?create[sd]?|codegen|branch(?:es)?|sibling|defaults? to|for a starter with|naming|ending in|ends? (?:with|in)|end in|emitted|suffix(?:ed)?|prefix(?:ed)?|stored|saved|persisted|cached|remembered|logged|organi[sz]ed by|by category|rewrites?|overwrites?|replays? from|reads? back|submodules?|subpaths?|wildcard)\b[^.;!?]*$/i;
+/** Generic words that only count when they govern the span, within the last 4 words before it ("files like `X`",
+ * "write it into `X`"). "New API handlers go in `src/api/x.ts`" and "code like the logger lives in `src/lib/logger.ts`" stay claims. */
+const CREATE_NEAR = /\b(?:new|like|into|either|output|outputs|locally)\b/i;
+function createdBefore(b) {
+  if (CREATE_BEFORE.test(b)) return true;
+  const words = b.split(/[.;!?](?:\s|$)/).pop().trim().split(/\s+/);
+  return CREATE_NEAR.test(words.slice(-4).join(' '));
+}
 const CREATE_AFTER = /^(?:[^.;!?]*?\b(?:will be|is|are|gets|get|be)\s+(?:auto-?)?(?:created|generated|written|produced|built|emitted|downloaded|installed)\b|\s*\(?\s*(?:generated|created|gitignored|ignored|local(?:ly)?|optional|if present|if it exists|if exists|not committed|untracked|when present|once created)\b|[^.;!?]*\bif (?:it |they )?(?:exists?|present)\b|[^.;!?]*\b(?:does ?n[o']t exist yet|not exist yet|to be created)\b|[^.;!?]*\b(?:folder|directory|dir|file)?\s*exists\b|[^.;!?]*\bgenerated\b|[^.;!?]*\b(?:git )?submodule\b|[^.;!?]*\bsubpath\b|\s*(?:alias|aliases)\b|\s*\(\s*(?:state|cache|runtime|data|log|logs|output|tmp|temp|user|home|config)\s+(?:dir|directory|folder|file)\b)/i;
 const EXAMPLE_HEADING = /\b(?:examples?|samples?|templates?|placeholders?|illustrations?|format|output)\b/i;
 /** Text that says a command runs somewhere else: another package, the workspace root outside this repo, a library. */
@@ -1090,11 +1103,46 @@ function contextBefore(lineText, col, prevText) {
 function contextAfter(lineText, endCol) { return lineText.slice(endCol, endCol + CONTEXT_CHARS).replace(/^`+/, ''); }
 /** Drops code spans, and turns dots inside words and numbers ("Node.js", "1.23") into "_" so they do not end a clause. */
 function stripSpans(t) { return t.replace(/`[^`]*`/g, ' ').replace(/\.(?=[^\s.])/g, '_'); }
+/** Words after which a new clause starts: "Do not open a PR until `make check` passes". */
+const CLAUSE_PIVOT = /\b(?:until|unless|before|once|but|otherwise|then)\b/gi;
+/** After a negation these words make a requirement: "never commit without running X", "don't forget to run X", "do not skip X". */
+const NEG_FLIP = /\b(?:without|forget(?:ting)?|fail(?:ing)?\s+to|skip(?:ping)?|omit(?:ting)?|ignor(?:e|ing))\b/gi;
+/** A comma clause that still belongs to what came before (a list, an example, a relative clause). */
+const CONTINUES = /^\s*(?:or|and|nor|which|that|who|where|whose|e_g|i_e|eg|ie|for example|for instance|such as|like|including|especially|etc|neither|not)\b/i;
+function lastEnd(re, t) {
+  re.lastIndex = 0;
+  let m, end = -1;
+  while ((m = re.exec(t))) end = m.index + m[0].length;
+  return end;
+}
+/** The clause that governs a span: the text after the last clause break before it. */
+function governingClause(b) {
+  let cut = lastEnd(CLAUSE_PIVOT, b);
+  const comma = b.lastIndexOf(',');
+  if (comma > cut) {
+    const rest = b.slice(comma + 1);
+    if (!CONTINUES.test(rest) && rest.trim().split(/\s+/).filter(Boolean).length >= 2) cut = comma + 1;
+  }
+  // "There is no Docker setup and the entry point is `src/server.ts`": a new clause with its own subject
+  const and = lastEnd(/\band\b/gi, b);
+  if (and > cut && b.slice(and).trim().split(/\s+/).filter(Boolean).length >= 3 && !CONTINUES.test(b.slice(and))) cut = and;
+  return cut > 0 ? b.slice(cut) : b;
+}
+/** True when the clause before a span negates it. A negation followed by a flip word ("never ... without") is a requirement. */
+function negatedBefore(b) {
+  const t = governingClause(b);
+  if (!NEG_BEFORE.test(t)) return false;
+  NEG_FLIP.lastIndex = 0;
+  let m, flip = null;
+  while ((m = NEG_FLIP.exec(t))) flip = m;
+  if (flip && NEG_BEFORE.test(t.slice(0, flip.index).replace(/\s+$/, ' x'))) return NEG_BEFORE.test(t.slice(flip.index + flip[0].length));
+  return true;
+}
 function negated(lineText, col, endCol, prevText) {
   if (!lineText) return false;
   const b = stripSpans(contextBefore(lineText, col, prevText));
-  if (NEG_BEFORE.test(b)) return true;
-  return NEG_AFTER.test(contextAfter(lineText, endCol));
+  if (negatedBefore(b)) return true;
+  return NEG_AFTER.test(stripSpans(contextAfter(lineText, endCol)));
 }
 /** Sentence around a span, for ELSEWHERE checks. */
 function sentenceAround(lineText, col, endCol, prevText) {
@@ -1397,9 +1445,17 @@ const MULTI_TAIL = /^\s*(?:,|\/|\bor\b|\band\b|&|-|–|\bto\b|\bthrough\b)\s*v?(
 /* Per-file analysis                                                   */
 /* ------------------------------------------------------------------ */
 
+/** C0/C1 control characters and bidi/invisible direction marks: a repo could use them to rewrite a terminal or reorder text. */
+const UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+/** Replaces control and bidi characters with visible \uXXXX escapes (tabs and line breaks stay). */
+function safeText(s) {
+  return String(s).replace(UNSAFE_CHARS, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+}
 function mkDiag(ruleId, severity, rel, line, col, endCol, message, extra) {
-  const d = { ruleId, severity, file: rel, line, column: col, endLine: line, endColumn: endCol, message };
+  const d = { ruleId, severity, file: rel, line, column: col, endLine: line, endColumn: endCol, message: safeText(message) };
   if (extra) Object.assign(d, extra);
+  if (d.fix && d.fix.title) d.fix = Object.assign({}, d.fix, { title: safeText(d.fix.title) });
+  if (d.related) d.related = d.related.map((r) => Object.assign({}, r, { message: safeText(r.message) }));
   return d;
 }
 
@@ -1411,6 +1467,8 @@ const COMMANDS_OF_INTEREST = new Set(['cd', 'pushd', 'npm', 'pnpm', 'yarn', 'bun
   'go', 'gofmt', 'golangci-lint', 'pytest', 'py.test', 'python', 'python3', 'ruff', 'black', 'mypy', 'pyright', 'eslint', 'oxlint', 'flake8', 'pylint', 'prettier', 'biome', 'vitest', 'jest', 'mocha', 'ava', 'tsc', 'node', 'deno']);
 /** At most this many findings per instruction file; past it, one note says the file was not fully checked. */
 const MAX_FINDINGS_PER_FILE = 2000;
+/** Default time budget for one analyzeWorkspace run. */
+const DEFAULT_BUDGET_MS = 20 * 1000;
 
 function analyzeText(ctx, rel, text, opts) {
   opts = opts || {};
@@ -1422,6 +1480,15 @@ function analyzeText(ctx, rel, text, opts) {
   const doc = scanDocument(text);
   const instrDir = posixDirname(rel);
   let capped = false;
+  const deadline = opts.deadline || Infinity;
+  let timedOut = false;
+  let tick = 0;
+  /** True once the file hit the finding cap or the run's time budget: every loop below stops then. */
+  const stop = () => {
+    if (capped || timedOut) return true;
+    if ((++tick & 63) === 0 && Date.now() > deadline) { timedOut = true; facts.timedOut = true; }
+    return timedOut;
+  };
   const emit = (d) => {
     if (isDisabled(doc, d.ruleId, d.line)) return;
     if (out.length >= MAX_FINDINGS_PER_FILE) {
@@ -1456,6 +1523,7 @@ function analyzeText(ctx, rel, text, opts) {
 
   const interestCache = new Map(); // span text -> does it start a command we check?
   for (const src of repoFacts ? commandSources : []) {
+    if (stop()) break;
     let t = src.text;
     if (src.inline) {
       const pm = /^(?:\$|❯|>)\s+/.exec(t);
@@ -1473,6 +1541,7 @@ function analyzeText(ctx, rel, text, opts) {
     src.elsewhere = src.inline && ELSEWHERE.test(sentenceAround(src.lineText, src.col, src.endCol, src.prevText));
     let cwd; // undefined => instruction dir
     for (const seg of segs) {
+      if (capped) break;
       const toks = stripPrefixes(seg.toks);
       if (!toks.length) continue;
       const cmd = toks[0].v;
@@ -1482,6 +1551,7 @@ function analyzeText(ctx, rel, text, opts) {
         const base = cwd === undefined ? instrDir : cwd;
         if (base === null) continue;
         const cand = [normalizeRel(posixJoin(base, target.v)), normalizeRel(target.v)];
+        if (cand[0] === null) { cwd = null; continue; } // climbs above the opened folder: cannot be checked
         const hit = cand.find((c) => c !== null && isDirRel(ctx, c));
         if (hit !== undefined) cwd = hit;
         else {
@@ -1517,6 +1587,7 @@ function analyzeText(ctx, rel, text, opts) {
   if (repoFacts && pmInfo && pmInfo.pm) {
     const re = /\b(?:use|uses|using|prefer|prefers|run with|install with|via)\s+`?(npm|pnpm|yarn|bun)`?(?![\w.@/-])/gi;
     for (const p of doc.prose) {
+      if (stop()) break;
       let m;
       re.lastIndex = 0;
       while ((m = re.exec(p.text))) {
@@ -1526,7 +1597,7 @@ function analyzeText(ctx, rel, text, opts) {
         const after = p.text.slice(col, col + 80);
         if (/^\w+`?\s*(?:to|for)\s+(?:publish|log ?in|install\s+(?:it\s+)?globally|global)|\s-g\b|--global/i.test(after)) continue;
         const before = stripSpans(contextBefore(p.text, m.index, p.prevText));
-        if (NEG_BEFORE.test(before)) continue;
+        if (negatedBefore(before)) continue;
         if (/\b(?:over|rather than|instead of|stop|stopped|quit|no longer|never)\s*$/i.test(before)) continue;
         emitOnce(mkDiag('CD003', 'warning', rel, p.line, col, col + m[1].length,
           `This file says to use ${pmName}, but the repo uses ${pmInfo.pm} (${pmInfo.source}).`, { data: { kind: 'pm', expected: pmInfo.pm } }));
@@ -1539,11 +1610,14 @@ function analyzeText(ctx, rel, text, opts) {
   for (const p of doc.prose) vLines.push({ text: p.text, line: p.line, prevText: p.prevText });
   for (const f of doc.fence) if (SHELL_LANGS.has(f.lang)) vLines.push({ text: f.text, line: f.line, fence: true });
   for (const vl of repoFacts ? vLines : []) {
+    if (stop()) break;
+    let perLine = 0; // a real line states a version a few times at most; a wall of them is not worth the CPU
     for (const pat of VERSION_PATTERNS) {
       if (vl.fence && !pat.cmd) continue;
       pat.re.lastIndex = 0;
       let m;
       while ((m = pat.re.exec(vl.text))) {
+        if (++perLine > 16) break;
         let op, verStr, minSuffix;
         if (pat.cmd) { op = ''; verStr = m[1]; minSuffix = ''; } else { op = m[1] || ''; verStr = m[2]; minSuffix = m[3] || ''; }
         const v = parseVer(verStr);
@@ -1618,13 +1692,14 @@ function analyzeText(ctx, rel, text, opts) {
     }
   };
   for (const s of doc.inline) {
+    if (stop()) break;
     if (!repoFacts && !SKILL_BUNDLE_PATH.test(s.text.replace(/\\/g, '/'))) continue; // skills describe *other* projects; check only their bundle
     checkOnce(s, false);
   }
-  for (const l of doc.links) checkOnce(l, true);
+  for (const l of doc.links) { if (stop()) break; checkOnce(l, true); }
 
   // ---- CD002 frontmatter globs in .mdc / .instructions.md
-  if (doc.frontmatter && (facts.kind === 'cursor-rule' || facts.kind === 'copilot-scoped')) {
+  if (doc.frontmatter && !stop() && (facts.kind === 'cursor-rule' || facts.kind === 'copilot-scoped')) {
     const scope = scopeDirOf(rel);
     for (let i = doc.frontmatter.start + 1; i < doc.frontmatter.end; i++) {
       if (doc.lines[i].length > MAX_LINE_CHARS) continue;
@@ -1960,7 +2035,7 @@ function checkPathCandidate(ctx, rel, instrDir, s, isLink, emit, skillBases, sta
   if (negated(lineText, s.col, s.endCol, s.prevText)) return;
   if (!isLink) {
     const b = stripSpans(contextBefore(lineText, s.col, s.prevText));
-    if (CREATE_BEFORE.test(b)) return;
+    if (createdBefore(b)) return;
   }
   if (CREATE_AFTER.test(contextAfter(lineText, s.endCol)) || CREATE_AFTER.test(stripSpans(contextAfter(lineText, s.endCol)))) return;
   if (!isLink && ELSEWHERE.test(sentenceAround(lineText, s.col, s.endCol, s.prevText))) return;
@@ -2057,6 +2132,9 @@ function checkPathCandidate(ctx, rel, instrDir, s, isLink, emit, skillBases, sta
   }
 
   const target = c.clean.replace(/\/+$/, '');
+  // "../shared/x.ts" that climbs above the opened folder: it may exist outside (a monorepo package opened
+  // on its own, the CLI run on a subfolder). It cannot be checked, so it is never reported.
+  if (!c.rootRel && posixJoin(instrDir, target) === null) return;
   // a tool's own state or config folder (.nanocoder/, .senpi/settings.json, .scratchpad/): per user or per machine
   if (/^\.[\w-]+(?:\/|$)/.test(target) && !KNOWN_REPO_DOTDIRS.has(target.split('/')[0]) && (target.includes('/') || !c.ext)) return;
   const cands = [];
@@ -2360,6 +2438,9 @@ function binFromDependency(ctx, dir, name) {
 
 const MAKE_VALUE_FLAGS = new Set(['-C', '--directory', '-f', '--file', '--makefile', '-I', '--include-dir', '-o', '--old-file', '-W', '--what-if', '--assume-new', '-l', '--load-average', '-O', '--output-sync', '--eval']);
 
+/** At most this many targets of one `make` command are checked. */
+const MAX_MAKE_TARGETS = 32;
+
 function checkMake(ctx, rel, src, toks, dir, emit, facts) {
   let mdir = dir;
   let mfile = null;
@@ -2378,6 +2459,7 @@ function checkMake(ctx, rel, src, toks, dir, emit, facts) {
     if (v.startsWith('-')) { if (MAKE_VALUE_FLAGS.has(v)) i++; else if (v === '-j' && toks[i + 1] && /^\d+$/.test(toks[i + 1].v)) i++; continue; }
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(v)) continue;
     targets.push(toks[i]);
+    if (targets.length >= MAX_MAKE_TARGETS) break; // nobody types more; a generated wall of names is not worth the CPU
   }
   if (!targets.length) return;
   let makefiles = [];
@@ -2737,15 +2819,19 @@ function analyzeWorkspace(root, options) {
   const skipped = [];
   let diags = [];
   const copied = looksLikeCopiedFolder(ctx);
+  // A run stops checking after this many ms and returns what it has (the extension kills a worker run at 30 s).
+  const budgetMs = options.budgetMs === undefined ? DEFAULT_BUDGET_MS : options.budgetMs;
+  const deadline = options.deadline !== undefined ? options.deadline : budgetMs > 0 ? t0 + budgetMs : Infinity;
   for (const rel of candidates) {
     const abs = path.join(ctx.root, rel);
+    if (Date.now() > deadline) { skipped.push({ file: rel, absFile: abs, reason: 'not checked: the run used up its time budget' }); continue; }
     let text = overrides.get(abs);
     if (text === undefined) text = readFresh(ctx, abs);
     if (text === null || text === undefined) continue;
     if (typeof text === 'object') { skipped.push({ file: rel, absFile: abs, reason: text.skipped }); continue; }
     if (text.length > MAX_INSTRUCTION_BYTES) { skipped.push({ file: rel, absFile: abs, reason: 'larger than 1 MB' }); continue; }
     let r;
-    try { r = analyzeText(ctx, rel, text); } catch (e) { r = { diagnostics: [], facts: { verbs: new Map() } }; if (options.debug) throw e; }
+    try { r = analyzeText(ctx, rel, text, { deadline }); } catch (e) { r = { diagnostics: [], facts: { verbs: new Map() } }; if (options.debug) throw e; }
     files.push(rel);
     results.push({ rel, facts: r.facts, text });
     let ds = r.diagnostics;
@@ -2757,6 +2843,7 @@ function analyzeWorkspace(root, options) {
         `Not a project root: this folder is not a git repository root and has no manifest (package.json, pyproject.toml, go.mod, ...), and ${ps.missing} of ${ps.checked} referenced paths are missing. It looks like a copy of an instruction file, so path checks were skipped.`,
         { data: { kind: 'not-project-root' } }));
     }
+    if (r.facts.timedOut) skipped.push({ file: rel, absFile: abs, reason: 'only partly checked: the run used up its time budget', partial: true });
     if (r.facts.spansCapped) skipped.push({ file: rel, absFile: abs, reason: `more than ${MAX_SPANS_PER_FILE} code spans or links; the rest were not checked`, partial: true });
     if (r.facts.longLines) skipped.push({ file: rel, absFile: abs, reason: `${r.facts.longLines} line(s) longer than ${MAX_LINE_CHARS} characters were not checked`, partial: true });
     diags = diags.concat(ds);
@@ -2872,6 +2959,7 @@ module.exports = {
   analyzeWorkspaceAsync,
   invalidateManifests,
   MAX_LINE_CHARS,
+  safeText,
   // exported for tests
   _internal: { tokenizeShell, scanDocument, parseVer, satisfiesRange, claimFitsRange, compileGlob, globMatch, parseTomlLite, parseMakefile, parseJustfile, parseTaskfile, classifyPathCandidate, runGit, isGitignored },
 };

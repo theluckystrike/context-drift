@@ -8,7 +8,7 @@ Context Drift compares what your instruction files say with what is actually in 
 
 It reads `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules/**/*.mdc`, `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `.windsurfrules`, `.windsurf/rules/**/*.md`, `.clinerules` (file or folder), and `SKILL.md`.
 
-It is built for precision: when a statement cannot be checked for sure, it says nothing. On the repositories measured for this release, about 9 in 10 reported findings were true (see [Precision](#precision)).
+It is built for precision over recall. It skips text that reads as negated, historical, hypothetical or an example, and paths it cannot check, so it misses some real drift. On the repositories measured, about 9 in 10 reported findings were true (see [Precision](#precision)). Recall on real files was not measured.
 
 ## Before / after
 
@@ -54,7 +54,7 @@ Each finding has a stable rule id, a severity, and an exact range.
 - `uv run X` and `poetry run X` when `X` is not in `[project.scripts]` or `[tool.poetry.scripts]` and is not a declared dependency.
 - It understands `cd dir && …`, environment prefixes (`FOO=1 …`), and `$ ` prompts. In `console` blocks, and in shell blocks that use `$ ` prompts, only prompt lines are commands; the rest is output. `make test    Run the tests` listings stop at the description.
 - It does not flag built-ins (`npm install`, `pnpm add`, `bun test`, `cargo build`, …) or placeholders (`npm run <script>`).
-- It skips negated or historical text. The words *no, not, never, don't, avoid, instead of, deprecated, removed, old* (and similar) in the same sentence, or on the previous line of the same paragraph, turn the check off: "There is no root `pnpm dev`", "don't run `npm run eject`".
+- It skips negated or historical text. The words *no, not, never, don't, avoid, instead of, deprecated, removed, old* (and similar) in the clause before the command, or on the previous line of the same paragraph, turn the check off: "There is no root `pnpm dev`", "don't run `npm run eject`". A new clause starts after *until, unless, before, but, then*, after a comma, and after *and* when a new subject follows. So "Do not open a PR until `make check` passes" is checked. A negation followed by *without, forget, fail to, skip* is a requirement, so "Never commit without running `npm run lint`" and "Don't forget to run `npm run typecheck`" are checked too. Words after the command ("is deprecated", "(removed)", "no longer works") count only when the command is their subject.
 - It skips commands that the text says run somewhere else: "inside its package directory", "from the workspace root", "from the library".
 - In a sparse checkout it skips workspace-wide forms, because the packages may not be checked out.
 - If the instruction file is a skill (`SKILL.md`), this rule is off. Skills usually describe other projects.
@@ -68,13 +68,15 @@ Each finding has a stable rule id, a severity, and an exact range.
 - Globs that match nothing (`src/**/*.vue`) are reported as info, including Cursor `.mdc` `globs:` and Copilot `applyTo:` patterns that never apply. A glob whose last part has no extension (`packages/*/src`) also matches folders. At most 200 globs per file are checked.
 - It ignores the following:
   - URLs, `~/` and absolute paths, and paths right after an external URL or an `owner/repo` name (they live in that other repo).
+  - `../` paths that climb above the opened folder (`../shared/config.ts` in a monorepo package opened on its own). They may exist outside it, so they are not checked.
   - Placeholders (`<name>`, `path/to/`, `my-app`, `your_tool.py`, `mycommand.go`).
   - Gitignored paths and globs: each `.gitignore` in the repo and `.git/info/exclude` are matched against the whole path, wildcards included. When git is allowed, `git check-ignore` has the last word.
   - Build output and scratch folders (`dist`, `build`, `out`, `cjs`, `generated`, …) and tool state folders such as `.scratchpad/`.
   - Paths inside git submodules.
   - Code fences.
   - Anything under an "Example" heading.
-  - Text that names, creates, generates or stores a file rather than claiming it exists ("a file named `X`", "make sure `X/` exists", "regenerate `X`", "stored in `X`").
+  - Text that names, creates, generates or stores a file rather than claiming it exists ("a file named `X`", "make sure `X/` exists", "regenerate `X`", "stored in `X`"). Generic words such as *new*, *like* and *into* count only within the 4 words before the path, so "New API handlers go in `src/api/handlers.ts`" is checked.
+  - Not modeled: `.gitignore` negation (`!folder/`). A path under a re-included folder is treated as ignored and not reported.
 - In a sparse checkout, a missing path is reported only when `git ls-files` confirms it is not in the repo. Without git, missing paths are not reported there.
 - If the folder is not a git repository root, has no manifest, and most referenced paths are missing, it reports one info "Not a project root" instead of a list of missing paths. That is the usual case for an instruction file copied somewhere else.
 - In `SKILL.md` it checks only the skill's own bundle: links and `scripts/`, `references/`, `assets/` and similar paths, resolved against the skill folder and the plugin root.
@@ -139,7 +141,7 @@ Context Drift does not lint the *format* of instruction files: frontmatter, rule
 ## Editor
 
 - Diagnostics appear when you open, edit (debounced) or save an instruction file. They also refresh when `package.json`, a Makefile, a lockfile, `.nvmrc` and similar files change, and when files are created or deleted. Saving any other file does nothing.
-- The checks and git run in a worker thread, never on the extension host. The repository view is cached: an instruction-file edit reuses it, a manifest change re-reads only the manifests, and only created or deleted files make it walk the folder again. A check that takes longer than 30 s is stopped.
+- The checks and git run in a worker thread, never on the extension host. The repository view is cached: an instruction-file edit reuses it, a manifest change re-reads only the manifests, and only created or deleted files make it walk the folder again. The engine stops after 20 s and returns what it has; the files it did not check are listed. The worker is stopped when one folder's check runs longer than 30 s, counted from when the worker starts that check. In a multi-root workspace, the other folders' checks that this drops are run again.
 - Command: **Context Drift: Check Workspace**.
 - Status bar: `Drift: N` (warnings and errors). Click it to re-check.
 - Quick fixes:
@@ -202,7 +204,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: npx -y github:theluckystrike/context-drift#v0.1.1 --format github
+      - run: npx -y github:theluckystrike/context-drift#v0.1.2 --format github
 ```
 
 `--format github` prints `::error`, `::warning` and `::notice` workflow commands, so findings show up inline on the PR diff. Add `--stale` and `fetch-depth: 0` on the checkout step if you want CD006.
@@ -211,13 +213,14 @@ jobs:
 
 - Zero runtime dependencies. One small CommonJS engine is shared by the extension and the CLI.
 - Fast. A 5,000-file repo takes about 20 ms on an M-series Mac. It never reads `node_modules`, `.git`, `dist`, `build`, `vendor`, `target` or `.venv`, and it skips nested git repos and worktrees.
-- Safe on hostile repos. Globs from the repo are never turned into regular expressions; a linear-time matcher is used instead. Every line regex is linear. Inputs are capped: 1 MB per file, 4,000 characters per line, 200 globs and 20,000 code spans per file. A test times each adversarial input from the review at 1 MB, and each must finish in under 50 ms.
+- Safe on hostile repos. Globs from the repo are never turned into regular expressions; a linear-time matcher is used instead. Every line regex is linear. Inputs are capped: 1 MB per file, 4,000 characters per line, 200 globs, 20,000 code spans, 2,000 findings per file and 32 targets per `make` command. Work stops at the finding cap, and a run stops after 20 s. Tests time the adversarial inputs from both independent reviews at about 1 MB: the first review's must take under 50 ms of CPU each, the second review's under 300 ms (the slowest takes about 70 ms on an M-series Mac). Other inputs can be slower; the 20 s budget bounds them.
+- Text output (`--format text`) and diagnostic messages escape control and bidi characters from the repo as `\uXXXX`, so a hostile file name or path cannot rewrite your terminal or CI log.
 - git runs only asynchronously, read-only, with `--no-optional-locks`, `core.fsmonitor=false` and a 3 s timeout per call; a hung git is killed.
 - Robust: binary, huge, CRLF, BOM, Unicode and broken (`package.json` with comments) files never crash it.
 
 ## Precision
 
-Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository):
+Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository). 0.1.2 gives exactly the same warnings and errors on the 184 local folders below (re-run on 2026-11-05: none added, none removed).
 
 - **Real source repositories** from the review (a webdriverio checkout, promptbook, a small CLI repo): 4 findings, all true. 0.1.0 reported 4 true and 14 false findings there.
 - **184 local folders with 3,629 instruction files** (git off, as in the review):
@@ -227,6 +230,7 @@ Measured for 0.1.1 on the same material as the independent review of 0.1.0 (deta
   - CD002: 224 warnings (0.1.0: 921). In a random sample of 40, 4 were false. Another 21 are technically true: they sit in folders that hold a copy of an instruction file without the source.
   - Overall, about 1 finding in 10 is false.
 - **The 48 adversarial cases** from the review: all 48 pass (0.1.0: 24 false positives, 1 false negative).
+- **The 53 cases of the second review** (0.1.1): 50 pass (0.1.1: 42). Of its 17 recall cases, 0.1.2 reports the expected finding in all 17 (0.1.1: 10). The three cases that do not match are known: `.gitignore` negation (not modeled), a span with terminal control characters (not read as a command), and one case where the review's own expectation was wrong ("Go 1.20 or newer" against `go 1.22` is true drift and is reported). These cases are regression tests in `test/review-r2.test.js`.
 
 ## Privacy
 

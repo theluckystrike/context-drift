@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.2 (2026-11-05)
+
+Fixes from the second independent review.
+
+### Rules
+- Negation is read per clause, not per sentence. "Never commit without running `npm run lint`", "Don't forget to run `npm run typecheck`", "Do not open a PR until `make check` passes" are now checked. So is a path after "There is no Docker setup and the entry point is …". "(the old script was removed)" after a command no longer hides it; words after a command count only when the command is their subject.
+- CD002: *new*, *like*, *into*, *either*, *output* and *locally* hide a path only when they are within 4 words before it. "New API handlers go in `src/api/handlers.ts`" is checked.
+- CD002: `../` paths that climb above the opened folder are no longer reported as missing (a monorepo package opened on its own). They cannot be checked.
+- On the 184-folder corpus used for 0.1.1, the warnings and errors are unchanged.
+
+### Safety
+- Work on a file stops at the 2,000-finding cap, and one `make` command checks at most 32 targets. A 1 MB file of `make a a a …` took 5 s; it now takes about 40 ms. A run stops after 20 s and lists the files it did not check.
+- A long line of `[a](` made the link parser quadratic (1 s per MB). It is now linear. At most 16 version claims are read per line.
+- Diagnostic messages and the CLI's text and GitHub output escape control and bidi characters from the repo (`\u001b`, `\u202e`, …).
+
+### Editor
+- The 30 s budget for a check counts from when the worker starts it, not from when it was queued behind another folder.
+- When another folder's check runs over budget and the shared worker restarts, the dropped checks run again instead of keeping old diagnostics.
+
+### Packaging
+- Factory bookkeeping files (`deletions-*.txt`, `FIX*.md`, `DONE*`) are excluded from the .vsix and the npm package.
+
 ## 0.1.1 (2026-11-05)
 
 Safety, speed and precision fixes from an independent review.

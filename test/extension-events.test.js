@@ -191,3 +191,30 @@ test('git that hangs is abandoned after the timeout, and the check still returns
     r.cleanup();
   }
 });
+
+// CDR2-06: one worker serves all folders. When another folder's check runs over budget, the worker is restarted
+// and this folder's pending check is dropped: it must run again, not keep stale diagnostics.
+test('extension: a check dropped by a worker restart runs again; the budget timer starts only when the worker starts', async () => {
+  const s = await setup(FILES, { useGit: false });
+  const { m, requests } = s;
+  try {
+    const runner = s.ext._test.getRunner();
+    const wrapped = runner.request;
+    let first = true;
+    let timerAtSend;
+    runner.request = (msg) => {
+      const p = wrapped(msg);
+      if (first && msg.type === 'analyze') {
+        first = false;
+        timerAtSend = [...runner.pending.values()].map((x) => x.timer);
+        runner.restart(); // what happens when another folder's request times out
+      }
+      return p;
+    };
+    requests.length = 0;
+    m.sets.clear();
+    m.ev.onDidSaveTextDocument.fire(doc(m, path.join(s.r.dir, 'AGENTS.md'), FILES['AGENTS.md']));
+    assert.ok(await waitFor(() => requests.length >= 2 && m.sets.has(path.join(s.r.dir, '.cursor/rules/vue.mdc')), 8000), `re-run after restart (requests: ${requests.length})`);
+    assert.deepEqual(timerAtSend, [null], 'no budget timer while the request is queued');
+  } finally { s.done(); }
+});

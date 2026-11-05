@@ -10,3 +10,7 @@ STATUS.json
 scratch-fix1/
 icon.svg
 .vscodeignore
+deletions-*.txt
+FIX*.md
+DONE*
+scratch*/

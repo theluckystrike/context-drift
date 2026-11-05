@@ -16,3 +16,7 @@ icon.svg
 node_modules/**
 **/*.map
 .npmignore
+deletions-*.txt
+FIX*.md
+DONE*
+scratch*/**

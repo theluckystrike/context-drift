@@ -133,3 +133,38 @@ test('symlinked instruction file pointing outside the workspace is not read (CDR
     assert.match(res.skipped[0].reason, /outside the workspace/);
   } finally { r.cleanup(); outside.cleanup(); }
 });
+
+// ---- round-2 review (CDR2-05): more 1 MB shapes, and the 2,000-finding cap must stop the work, not only the output
+const L = LINE;
+const R2_SHAPES = {
+  'make-cmd-long': () => '`make ' + 'a '.repeat(L / 2 - 6) + '`',
+  'link-nest': () => '[a]('.repeat(Math.floor(L / 4)),
+  'version-spam': () => 'Node 18 '.repeat(Math.floor(L / 8)),
+  'python-spam': () => 'Python 3.11 or '.repeat(Math.floor(L / 15)),
+  'many-spans-npm': () => '`npm run q` '.repeat(Math.floor(L / 12)),
+  'many-spans-paths': () => '`a/b.ts` '.repeat(Math.floor(L / 9)),
+  'neg-words': () => 'not '.repeat(L / 4 - 2) + '`a/b.ts`',
+  'create-words': () => 'new '.repeat(L / 4 - 2) + '`a/b.ts`',
+};
+for (const [name, line] of Object.entries(R2_SHAPES)) {
+  test(`review r2 load shape "${name}" at ~1 MB stays well under a second`, () => {
+    const r = tempRepo({ 'AGENTS.md': fill(line()), 'Makefile': 'build:\n\t@true\n', 'package.json': '{"scripts":{"build":"x"}}', '.nvmrc': '20\n', '.python-version': '3.12\n' });
+    try {
+      let best = Infinity;
+      for (let k = 0; k < 3; k++) { const c0 = process.cpuUsage(); engine.analyzeWorkspace(r.dir, { git: false }); const c = process.cpuUsage(c0); best = Math.min(best, (c.user + c.system) / 1000); }
+      assert.ok(best < 300, `${name}: ${best.toFixed(0)} ms`); // was 5,092 ms for make-cmd-long and 1,028 ms for link-nest
+    } finally { r.cleanup(); }
+  });
+}
+test('7 files of 1 MB `make a a …` finish in a few seconds (was 40 s)', () => {
+  const files = { Makefile: 'build:\n\t@true\n', 'package.json': '{}' };
+  const body = fill('`make ' + 'a '.repeat(L / 2 - 6) + '`');
+  for (const d of ['', 'a/', 'b/', 'c/', 'd/', 'e/', 'f/']) files[d + 'AGENTS.md'] = body;
+  const r = tempRepo(files);
+  try {
+    const t0 = Date.now();
+    const res = engine.analyzeWorkspace(r.dir, { git: false });
+    assert.equal(res.files.length, 7);
+    assert.ok(Date.now() - t0 < 5000, `${Date.now() - t0} ms`);
+  } finally { r.cleanup(); }
+});

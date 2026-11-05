@@ -6,4 +6,6 @@ STATUS.json
 DONE
 DONE-FIX1
 scratch-fix1/
-deletions-fix1.txt
+deletions-*.txt
+DONE-FIX2
+FIX2.md

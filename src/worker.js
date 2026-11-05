@@ -46,6 +46,7 @@ async function handle(msg) {
 
 if (parentPort) {
   parentPort.on('message', (msg) => {
+    parentPort.postMessage({ id: msg.id, started: true }); // the host starts the run budget now
     handle(msg).then(
       (res) => parentPort.postMessage(Object.assign({ id: msg.id }, res)),
       (e) => parentPort.postMessage({ id: msg.id, ok: false, error: String(e && e.stack || e) }),

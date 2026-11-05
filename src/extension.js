@@ -50,45 +50,61 @@ function key(uri, line, col, code) { return `${uri}|${line}|${col}|${code}`; }
 /* ---------------- engine runner (worker thread, in-process fallback) ---------------- */
 
 class EngineRunner {
-  constructor() { this.worker = null; this.pending = new Map(); this.seq = 0; this.inProcess = null; }
+  constructor() { this.worker = null; this.pending = new Map(); this.seq = 0; this.inProcess = null; this.disposed = false; }
   start() {
     if (this.worker || this.inProcess) return;
     try {
       const { Worker } = require('worker_threads');
       this.worker = new Worker(path.join(__dirname, 'worker.js'));
       this.worker.unref && this.worker.unref();
-      this.worker.on('message', (m) => { const p = this.pending.get(m.id); if (p) { this.pending.delete(m.id); clearTimeout(p.timer); p.resolve(m); } });
+      this.worker.on('message', (m) => this.onMessage(m));
       this.worker.on('error', (e) => this.fail(String(e && e.message || e)));
       this.worker.on('exit', () => { this.worker = null; this.fail('worker exited'); });
     } catch (_) {
       this.inProcess = require('./worker'); // no worker_threads: run in process (still async git)
     }
   }
+  onMessage(m) {
+    const p = this.pending.get(m.id);
+    if (!p) return;
+    if (m.started) {
+      // The budget counts from the moment the worker starts this request, not from the time it was queued
+      // behind another folder's check.
+      if (!p.timer) p.timer = setTimeout(() => this.timeout(m.id), RUN_BUDGET_MS);
+      return;
+    }
+    this.pending.delete(m.id);
+    clearTimeout(p.timer);
+    p.resolve(m);
+  }
+  timeout(id) {
+    const p = this.pending.get(id);
+    if (!p) return;
+    this.pending.delete(id);
+    p.resolve({ ok: false, error: 'timeout', timeout: true });
+    this.restart(); // the other folders' requests resolve with 'restarted'; their callers run them again
+  }
   fail(reason) {
     for (const [, p] of this.pending) { clearTimeout(p.timer); p.resolve({ ok: false, error: reason }); }
     this.pending.clear();
   }
   request(msg) {
+    if (this.disposed) return Promise.resolve({ ok: false, error: 'disposed' });
     this.start();
     if (this.inProcess) return this.inProcess.handle(msg).catch((e) => ({ ok: false, error: String(e) }));
     const id = ++this.seq;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        resolve({ ok: false, error: 'timeout', timeout: true });
-        this.restart();
-      }, RUN_BUDGET_MS);
-      this.pending.set(id, { resolve, timer });
+      this.pending.set(id, { resolve, timer: null });
       this.worker.postMessage(Object.assign({ id }, msg));
     });
   }
   restart() {
     const w = this.worker;
     this.worker = null;
-    if (w) { w.removeAllListeners('exit'); w.terminate().catch(() => {}); }
-    this.fail('restarted');
+    if (w) { w.removeAllListeners('exit'); w.removeAllListeners('message'); w.terminate().catch(() => {}); }
+    this.fail(this.disposed ? 'disposed' : 'restarted');
   }
-  dispose() { this.restart(); }
+  dispose() { this.disposed = true; this.restart(); }
 }
 
 /* ---------------- scheduling ---------------- */
@@ -160,7 +176,12 @@ async function doRun(folder, st) {
   if (!res || !res.ok) {
     if (LEVEL[invalidate] > LEVEL[st.invalidate]) st.invalidate = invalidate;
     st.timedOut = !!(res && res.timeout);
-    if (res && !res.timeout && res.error !== 'restarted') console.error('[context-drift]', res.error);
+    // Another folder's check ran over budget and the shared worker was restarted: this folder's check was
+    // dropped, not failed. Run it again (the new worker builds a fresh context).
+    if (res && res.error === 'restarted' && !runner.disposed && folderState.has(folder.uri.toString())) {
+      st.invalidate = 'files';
+      st.rerun = true;
+    } else if (res && !res.timeout && res.error !== 'disposed') console.error('[context-drift]', res.error);
     updateStatus();
     return null;
   }
