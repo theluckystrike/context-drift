@@ -1,0 +1,13 @@
+[project]
+name = "acme-tool"
+requires-python = ">=3.11"
+dependencies = [
+  "requests>=2.31",
+  "rich",
+]
+
+[project.scripts]
+mycli = "acme.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff"]

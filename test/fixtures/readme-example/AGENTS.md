@@ -1,0 +1,4 @@
+- Requires Node 18.
+- Install with `pnpm install`.
+- Build: `npm run buidl`. Deploy: `make deploy`.
+- Entry point: `src/server/main.ts`

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#312E81"/>
+      <stop offset="1" stop-color="#1E1B4B"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <!-- document -->
+  <path d="M34 22h40l20 20v64a6 6 0 0 1-6 6H34a6 6 0 0 1-6-6V28a6 6 0 0 1 6-6z" fill="#F8FAFC"/>
+  <path d="M74 22v14a6 6 0 0 0 6 6h14z" fill="#CBD5E1"/>
+  <!-- lines in sync -->
+  <rect x="38" y="52" width="40" height="7" rx="3.5" fill="#6366F1"/>
+  <rect x="38" y="66" width="30" height="7" rx="3.5" fill="#6366F1"/>
+  <!-- drifted line -->
+  <rect x="48" y="82" width="34" height="7" rx="3.5" fill="#F59E0B" transform="rotate(-8 65 85)"/>
+  <!-- warning badge -->
+  <circle cx="94" cy="96" r="20" fill="#F59E0B" stroke="#1E1B4B" stroke-width="5"/>
+  <rect x="91" y="84" width="6" height="15" rx="3" fill="#1E1B4B"/>
+  <circle cx="94" cy="105" r="3.4" fill="#1E1B4B"/>
+</svg>

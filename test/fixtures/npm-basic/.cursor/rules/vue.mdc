@@ -1,0 +1,6 @@
+---
+description: Vue rules
+globs: src/**/*.vue, src/**/*.ts
+alwaysApply: false
+---
+Use `npm run lint`.

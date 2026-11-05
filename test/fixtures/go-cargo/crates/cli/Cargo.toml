@@ -1,0 +1,6 @@
+[package]
+name = "cli"
+
+[[bin]]
+name = "acme"
+path = "src/main.rs"

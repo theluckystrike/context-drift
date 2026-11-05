@@ -1,0 +1,1 @@
+{"name":"app","scripts":{"build":"tsc","test":"node --test"}}

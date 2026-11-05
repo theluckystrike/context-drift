@@ -1,0 +1,8 @@
+test/
+dist/
+*.vsix
+NOTES.md
+STATUS.json
+DONE
+icon.svg
+.vscodeignore

@@ -1,0 +1,136 @@
+{
+  "name": "context-drift",
+  "displayName": "Context Drift for AGENTS.md & CLAUDE.md",
+  "description": "Finds stale facts in AGENTS.md, CLAUDE.md, GEMINI.md, Cursor and Copilot rules: missing npm scripts, make targets and paths, the wrong package manager, wrong Node/Python/Go versions. Local, no network.",
+  "version": "0.1.0",
+  "publisher": "zovo",
+  "license": "MIT",
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1E1B4B",
+    "theme": "dark"
+  },
+  "homepage": "https://github.com/theluckystrike/context-drift#readme",
+  "bugs": {
+    "url": "https://github.com/theluckystrike/context-drift/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theluckystrike/context-drift"
+  },
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Linters",
+    "AI"
+  ],
+  "keywords": [
+    "agents.md",
+    "claude.md",
+    "cursor rules",
+    "copilot instructions",
+    "gemini.md",
+    "ai agents",
+    "drift",
+    "cursorrules",
+    "windsurfrules",
+    "skill.md",
+    "linter"
+  ],
+  "main": "./src/extension.js",
+  "bin": {
+    "context-drift": "bin/context-drift.js"
+  },
+  "activationEvents": [
+    "workspaceContains:**/AGENTS.md",
+    "workspaceContains:**/CLAUDE.md",
+    "workspaceContains:**/CLAUDE.local.md",
+    "workspaceContains:**/GEMINI.md",
+    "workspaceContains:**/SKILL.md",
+    "workspaceContains:**/.cursorrules",
+    "workspaceContains:**/.windsurfrules",
+    "workspaceContains:**/.clinerules",
+    "workspaceContains:**/.cursor/rules/*.mdc",
+    "workspaceContains:**/.github/copilot-instructions.md",
+    "workspaceContains:**/.github/instructions/*.instructions.md"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In untrusted workspaces Context Drift does not run git, so CD006 (stale file) is off. All other checks only read files."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "contextDrift.checkWorkspace",
+        "title": "Check Workspace",
+        "category": "Context Drift"
+      }
+    ],
+    "configuration": {
+      "title": "Context Drift",
+      "properties": {
+        "contextDrift.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Check agent instruction files (AGENTS.md, CLAUDE.md, GEMINI.md, .cursorrules, Cursor/Copilot/Cline/Windsurf rules, SKILL.md) for drift."
+        },
+        "contextDrift.ignoreRules": {
+          "type": "array",
+          "default": [],
+          "scope": "resource",
+          "items": {
+            "type": "string",
+            "enum": [
+              "CD001",
+              "CD002",
+              "CD003",
+              "CD004",
+              "CD005",
+              "CD006"
+            ],
+            "enumDescriptions": [
+              "Command drift: script, make target, just recipe or task does not exist",
+              "Path drift: referenced file or folder does not exist",
+              "Package manager drift: file says npm/pnpm/yarn/bun, lockfile says another",
+              "Version drift: Node/Python/Go claim contradicts .nvmrc, engines, .python-version, go.mod",
+              "Cross-file conflict: two instruction files give different commands for the same verb",
+              "Stale file: not changed for a long time while the repo kept moving"
+            ]
+          },
+          "description": "Rule ids to skip, for example [\"CD005\", \"CD006\"]."
+        },
+        "contextDrift.gitStaleness": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "Run git (read-only) for CD006. Always off in untrusted workspaces."
+        },
+        "contextDrift.staleDays": {
+          "type": "number",
+          "default": 180,
+          "minimum": 1,
+          "scope": "resource",
+          "description": "CD006: report an instruction file whose last commit is older than this many days..."
+        },
+        "contextDrift.staleCommits": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1,
+          "scope": "resource",
+          "description": "...and the repo has at least this many commits since."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint:self": "node bin/context-drift.js .",
+    "package": "npx -y @vscode/vsce@3 package --no-dependencies -o dist/"
+  }
+}

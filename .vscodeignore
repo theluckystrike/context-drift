@@ -1,0 +1,14 @@
+test/**
+**/fixtures/**
+dist/**
+*.vsix
+NOTES.md
+STATUS.json
+DONE
+icon.svg
+.github/**
+.vscode/**
+.gitignore
+node_modules/**
+**/*.map
+.npmignore

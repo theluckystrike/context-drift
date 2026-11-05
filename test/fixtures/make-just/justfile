@@ -1,0 +1,10 @@
+set shell := ["bash", "-c"]
+
+default:
+    just --list
+
+# run checks
+check target='all':
+    echo {{target}}
+
+alias c := check

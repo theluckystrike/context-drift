@@ -1,0 +1,12 @@
+# Tasks
+- `make test`
+- `make release`
+- `make deploy`
+- `make -C sub build`
+- `make VERBOSE=1 lint`
+- `just check`
+- `just c`
+- `just docs`
+- `task serve`
+- `task publish`
+- `make lnt`
