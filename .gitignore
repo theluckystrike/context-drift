@@ -1,5 +1,9 @@
 node_modules/
 dist/
 *.vsix
+*.tgz
 STATUS.json
 DONE
+DONE-FIX1
+scratch-fix1/
+deletions-fix1.txt

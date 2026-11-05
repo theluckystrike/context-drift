@@ -180,6 +180,7 @@ test('FP fix: SKILL.md checks only its bundled files, not generic commands or pr
   const res = check({
     'package-lock.json': '{}', 'package.json': PKG,
     '.claude/skills/x/SKILL.md': '- `pnpm install`\n- `src/app.ts`\n- See `references/api.md`\n- Node 12\n',
+    '.claude/skills/x/references/other.md': 'x', // the skill ships a references/ folder, so its bundle paths are checked
   });
   assert.deepEqual(brief(res), ['.claude/skills/x/SKILL.md CD002 2:7-24']);
 });

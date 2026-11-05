@@ -2,9 +2,13 @@ test/**
 **/fixtures/**
 dist/**
 *.vsix
+*.tgz
 NOTES.md
-STATUS.json
+FIX1.md
 DONE
+DONE-FIX1
+STATUS.json
+scratch-fix1/**
 icon.svg
 .github/**
 .vscode/**

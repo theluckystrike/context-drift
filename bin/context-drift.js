@@ -18,7 +18,9 @@ Options:
   --fail-on <level>    error (default) | warning | info | never. Exit 1 when a finding
                        at or above this level exists.
   --ignore <ids>       Comma-separated rule ids to skip, e.g. CD005,CD006.
-  --no-git             Skip CD006 (git staleness).
+  --stale              Turn on CD006 (stale file, uses git log). Off by default.
+  --no-git             Never run git. By default read-only git (check-ignore, ls-files)
+                       is used to skip ignored and sparse paths; each call times out after 3 s.
   --stale-days <n>     CD006 age threshold in days (default 180).
   --stale-commits <n>  CD006 commit threshold (default 50).
   -q, --quiet          Only print the summary line (text format).
@@ -34,7 +36,7 @@ Runs locally. No network. No telemetry.`;
 const LEVEL = { error: 3, warning: 2, info: 1, never: 99 };
 
 function parseArgs(argv) {
-  const o = { paths: [], format: 'text', failOn: 'error', ignore: [], git: true, quiet: false };
+  const o = { paths: [], format: 'text', failOn: 'error', ignore: [], git: true, stale: false, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const val = () => {
@@ -50,6 +52,7 @@ function parseArgs(argv) {
       case '--fail-on': o.failOn = val(); break;
       case '--ignore': o.ignore.push(...val().split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)); break;
       case '--no-git': o.git = false; break;
+      case '--stale': o.stale = true; break;
       case '--stale-days': o.staleDays = Number(val()); break;
       case '--stale-commits': o.staleCommits = Number(val()); break;
       case '-q': case '--quiet': o.quiet = true; break;
@@ -80,7 +83,7 @@ function findRootFor(file) {
 function ghEscapeData(s) { return String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'); }
 function ghEscapeProp(s) { return ghEscapeData(s).replace(/:/g, '%3A').replace(/,/g, '%2C'); }
 
-function main(argv) {
+async function main(argv) {
   let o;
   try { o = parseArgs(argv); } catch (e) { process.stderr.write(`context-drift: ${e.message}\nRun context-drift --help for usage.\n`); return 2; }
   if (o.help) { process.stdout.write(HELP + '\n'); return 0; }
@@ -88,39 +91,51 @@ function main(argv) {
   if (!o.paths.length) o.paths.push('.');
 
   const all = [];
+  const skipped = [];
   let filesChecked = 0;
   let elapsed = 0;
   const cwd = process.cwd();
   for (const p of o.paths) {
     let st;
     try { st = fs.statSync(p); } catch (_) { process.stderr.write(`context-drift: no such file or directory: ${p}\n`); return 2; }
-    const opts = { ignoreRules: o.ignore, git: o.git, staleDays: o.staleDays, staleCommits: o.staleCommits };
+    const opts = { ignoreRules: o.ignore, git: o.git, stale: o.stale && o.git, staleDays: o.staleDays, staleCommits: o.staleCommits };
     if (st.isDirectory()) {
-      const r = engine.analyzeWorkspace(p, opts);
+      const r = await engine.analyzeWorkspaceAsync(p, opts);
       filesChecked += r.files.length;
       elapsed += r.elapsedMs;
       all.push(...r.diagnostics);
+      skipped.push(...r.skipped);
     } else {
       const root = findRootFor(p);
       const rel = path.relative(root, path.resolve(p)).split(path.sep).join('/');
       const overrides = new Map();
+      if (st.size > 1024 * 1024) {
+        skipped.push({ file: rel, absFile: path.resolve(p), reason: 'larger than 1 MB' });
+        continue;
+      }
       if (!engine.classifyInstructionFile(rel)) {
         // allow checking any markdown file explicitly
         try { overrides.set(path.resolve(p), fs.readFileSync(p, 'utf8')); } catch (_) { /* unreadable */ }
       }
-      const r = engine.analyzeWorkspace(root, Object.assign({}, opts, { overrides }));
+      const r = await engine.analyzeWorkspaceAsync(root, Object.assign({}, opts, { overrides }));
       let ds = r.diagnostics.filter((d) => d.file === rel);
+      const sk = r.skipped.filter((x) => x.file === rel);
+      skipped.push(...sk);
       if (!engine.classifyInstructionFile(rel)) {
         const ctx = r.context;
         try { ds = engine.analyzeText(ctx, rel, fs.readFileSync(p, 'utf8')).diagnostics.filter((d) => !o.ignore.includes(d.ruleId)); } catch (_) { ds = []; }
         for (const d of ds) d.absFile = path.resolve(p);
       }
-      filesChecked += 1;
+      if (!sk.some((x) => !x.partial)) filesChecked += 1;
       elapsed += r.elapsedMs;
       all.push(...ds);
     }
   }
 
+  for (const x of skipped) {
+    const shown = path.relative(cwd, x.absFile).split(path.sep).join('/') || x.file;
+    process.stderr.write(x.partial ? `context-drift: ${shown}: ${x.reason}.\n` : `context-drift: skipped ${shown}: ${x.reason}.\n`);
+  }
   const counts = { error: 0, warning: 0, info: 0 };
   for (const d of all) counts[d.severity]++;
   const display = (d) => path.relative(cwd, d.absFile).split(path.sep).join('/') || d.file;
@@ -129,6 +144,7 @@ function main(argv) {
     process.stdout.write(JSON.stringify({
       version: engine.VERSION,
       filesChecked,
+      skipped: skipped.map((x) => ({ file: path.relative(cwd, x.absFile).split(path.sep).join('/') || x.file, reason: x.reason, partial: !!x.partial })),
       counts,
       diagnostics: all.map((d) => ({
         ruleId: d.ruleId, severity: d.severity, file: display(d), line: d.line + 1, column: d.column + 1,
@@ -157,9 +173,10 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  let code;
-  try { code = main(process.argv.slice(2)); } catch (e) { process.stderr.write(`context-drift: internal error: ${e && e.stack || e}\n`); code = 2; }
-  process.exitCode = code;
+  main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => {
+    process.stderr.write(`context-drift: internal error: ${e && e.stack || e}\n`);
+    process.exitCode = 2;
+  });
 }
 
 module.exports = { main, parseArgs };

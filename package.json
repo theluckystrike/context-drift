@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "Context Drift for AGENTS.md & CLAUDE.md",
   "description": "Finds stale facts in AGENTS.md, CLAUDE.md, GEMINI.md, Cursor and Copilot rules: missing npm scripts, make targets and paths, the wrong package manager, wrong Node/Python/Go versions. Local, no network.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",
@@ -52,15 +52,18 @@
     "workspaceContains:**/.cursorrules",
     "workspaceContains:**/.windsurfrules",
     "workspaceContains:**/.clinerules",
-    "workspaceContains:**/.cursor/rules/*.mdc",
+    "workspaceContains:**/.clinerules/**/*.md",
+    "workspaceContains:**/.windsurf/rules/**/*.md",
+    "workspaceContains:**/.cursor/rules/**/*.mdc",
     "workspaceContains:**/.github/copilot-instructions.md",
-    "workspaceContains:**/.github/instructions/*.instructions.md"
+    "workspaceContains:**/.github/instructions/**/*.instructions.md",
+    "onLanguage:markdown"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In untrusted workspaces Context Drift does not run git, so CD006 (stale file) is off. All other checks only read files."
+      "description": "In untrusted workspaces Context Drift never runs git: CD006 (stale file) is off and git-based filtering of ignored and sparse paths is skipped. All other checks only read files inside the workspace."
     }
   },
   "contributes": {
@@ -105,11 +108,17 @@
           },
           "description": "Rule ids to skip, for example [\"CD005\", \"CD006\"]."
         },
-        "contextDrift.gitStaleness": {
+        "contextDrift.useGit": {
           "type": "boolean",
           "default": true,
           "scope": "resource",
-          "description": "Run git (read-only) for CD006. Always off in untrusted workspaces."
+          "description": "Use read-only git (`git check-ignore`, `git ls-files`) to skip gitignored paths and files that a sparse checkout leaves out. Each call times out after 3 s and runs outside the extension host. Always off in untrusted workspaces."
+        },
+        "contextDrift.gitStaleness": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "Turn on CD006 (stale file). It runs `git log`, read-only, outside the extension host. Off by default. Always off in untrusted workspaces."
         },
         "contextDrift.staleDays": {
           "type": "number",

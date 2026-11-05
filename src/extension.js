@@ -9,14 +9,19 @@ const RULE_ANCHOR = {
   CD001: 'cd001-command-drift', CD002: 'cd002-path-drift', CD003: 'cd003-package-manager-drift',
   CD004: 'cd004-version-drift', CD005: 'cd005-cross-file-conflict', CD006: 'cd006-stale-file',
 };
-const MANIFEST_GLOB = '**/{package.json,Makefile,makefile,GNUmakefile,*.mk,justfile,Justfile,.justfile,Taskfile.yml,Taskfile.yaml,pyproject.toml,requirements*.txt,Cargo.toml,.cargo/config.toml,go.mod,.nvmrc,.node-version,.python-version,.tool-versions,runtime.txt,package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb,.gitignore}';
-const INSTRUCTION_GLOB = '**/{AGENTS.md,CLAUDE.md,CLAUDE.local.md,GEMINI.md,SKILL.md,.cursorrules,.windsurfrules,.clinerules,.github/copilot-instructions.md,.github/instructions/*.instructions.md,.cursor/rules/**/*.mdc,.clinerules/**/*.md,.windsurf/rules/**/*.md}';
-const CONTEXT_TTL_MS = 60 * 1000;
+const MANIFEST_GLOB = '**/{package.json,Makefile,makefile,GNUmakefile,*.mk,justfile,Justfile,.justfile,Taskfile.yml,Taskfile.yaml,pyproject.toml,requirements*.txt,Cargo.toml,.cargo/config.toml,go.mod,.nvmrc,.node-version,.python-version,.tool-versions,runtime.txt,package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb,.gitignore,.gitmodules}';
+const INSTRUCTION_GLOB = '**/{AGENTS.md,CLAUDE.md,CLAUDE.local.md,GEMINI.md,SKILL.md,.cursorrules,.windsurfrules,.clinerules,.github/copilot-instructions.md,.github/instructions/**/*.instructions.md,.cursor/rules/**/*.mdc,.clinerules/**/*.md,.windsurf/rules/**/*.md}';
+const MANIFEST_BASENAME = /^(?:package\.json|[Mm]akefile|GNUmakefile|.*\.mk|[Jj]ustfile|\.justfile|[Tt]askfile(?:\.dist)?\.ya?ml|pyproject\.toml|requirements.*\.(?:txt|in)|Cargo\.toml|config\.toml|go\.mod|\.nvmrc|\.node-version|\.python-version|\.tool-versions|runtime\.txt|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|\.gitignore|\.gitmodules)$/;
 const DEBOUNCE_MS = 500;
+const FS_DEBOUNCE_MS = 2000;
+/** A check that takes longer than this is abandoned (the worker is restarted). */
+const RUN_BUDGET_MS = 30 * 1000;
+const LEVEL = { none: 0, manifests: 1, files: 2 };
 
 let collection;
 let statusItem;
-const folderState = new Map(); // folder uri string -> { ctx, uris:Set<string>, count, files }
+let runner;
+const folderState = new Map(); // folder uri string -> state
 const timers = new Map();
 const actionData = new Map(); // key -> diagnostic payload for code actions
 
@@ -28,79 +33,159 @@ function relIn(folder, fsPath) {
   return rel.split(path.sep).join('/');
 }
 function isInstructionDoc(doc) {
-  if (doc.uri.scheme !== 'file') return null;
+  if (!doc || !doc.uri || doc.uri.scheme !== 'file') return null;
   const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
   if (!folder) return null;
   const rel = relIn(folder, doc.uri.fsPath);
   return rel && engine.classifyInstructionFile(rel) ? folder : null;
 }
+function isManifestPath(fsPath) { return MANIFEST_BASENAME.test(path.basename(fsPath)); }
+/** Paths under node_modules, .git, dist, ... never change what the engine sees. */
+function isIgnoredPath(folder, fsPath) {
+  const rel = relIn(folder, fsPath);
+  return !rel || rel.split('/').some((s) => engine.IGNORED_DIRS.has(s));
+}
 function key(uri, line, col, code) { return `${uri}|${line}|${col}|${code}`; }
 
-function invalidate(folder) {
-  const st = folderState.get(folder.uri.toString());
-  if (st) st.ctx = null;
-}
-function invalidateAll() { for (const st of folderState.values()) st.ctx = null; }
+/* ---------------- engine runner (worker thread, in-process fallback) ---------------- */
 
-function schedule(folder, delay) {
+class EngineRunner {
+  constructor() { this.worker = null; this.pending = new Map(); this.seq = 0; this.inProcess = null; }
+  start() {
+    if (this.worker || this.inProcess) return;
+    try {
+      const { Worker } = require('worker_threads');
+      this.worker = new Worker(path.join(__dirname, 'worker.js'));
+      this.worker.unref && this.worker.unref();
+      this.worker.on('message', (m) => { const p = this.pending.get(m.id); if (p) { this.pending.delete(m.id); clearTimeout(p.timer); p.resolve(m); } });
+      this.worker.on('error', (e) => this.fail(String(e && e.message || e)));
+      this.worker.on('exit', () => { this.worker = null; this.fail('worker exited'); });
+    } catch (_) {
+      this.inProcess = require('./worker'); // no worker_threads: run in process (still async git)
+    }
+  }
+  fail(reason) {
+    for (const [, p] of this.pending) { clearTimeout(p.timer); p.resolve({ ok: false, error: reason }); }
+    this.pending.clear();
+  }
+  request(msg) {
+    this.start();
+    if (this.inProcess) return this.inProcess.handle(msg).catch((e) => ({ ok: false, error: String(e) }));
+    const id = ++this.seq;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        resolve({ ok: false, error: 'timeout', timeout: true });
+        this.restart();
+      }, RUN_BUDGET_MS);
+      this.pending.set(id, { resolve, timer });
+      this.worker.postMessage(Object.assign({ id }, msg));
+    });
+  }
+  restart() {
+    const w = this.worker;
+    this.worker = null;
+    if (w) { w.removeAllListeners('exit'); w.terminate().catch(() => {}); }
+    this.fail('restarted');
+  }
+  dispose() { this.restart(); }
+}
+
+/* ---------------- scheduling ---------------- */
+
+function stateFor(folder) {
+  const k = folder.uri.toString();
+  let st = folderState.get(k);
+  if (!st) { st = { uris: new Set(), count: 0, infos: 0, files: 0, skipped: 0, invalidate: 'files', running: null, rerun: false, timedOut: false }; folderState.set(k, st); }
+  return st;
+}
+function markInvalid(folder, level) {
+  const st = stateFor(folder);
+  if (LEVEL[level] > LEVEL[st.invalidate]) st.invalidate = level;
+}
+function schedule(folder, delay, level) {
+  markInvalid(folder, level || 'none');
   const k = folder.uri.toString();
   clearTimeout(timers.get(k));
   timers.set(k, setTimeout(() => { timers.delete(k); runFolder(folder); }, delay === undefined ? DEBOUNCE_MS : delay));
 }
-function scheduleAll(delay) { for (const f of vscode.workspace.workspaceFolders || []) schedule(f, delay); }
+function scheduleAll(delay, level) { for (const f of vscode.workspace.workspaceFolders || []) schedule(f, delay, level); }
 
 function clearFolder(st) {
   for (const u of st.uris) collection.delete(vscode.Uri.parse(u));
   st.uris = new Set();
   st.count = 0;
+  st.infos = 0;
   st.files = 0;
+  st.skipped = 0;
 }
 
+/** Runs the check for one folder. Never blocks the extension host: the engine and git run in a worker. */
 function runFolder(folder) {
-  const k = folder.uri.toString();
-  let st = folderState.get(k);
-  if (!st) { st = { ctx: null, uris: new Set(), count: 0, files: 0 }; folderState.set(k, st); }
+  const st = stateFor(folder);
+  if (st.running) { st.rerun = true; return st.running; }
+  st.running = doRun(folder, st).finally(() => {
+    st.running = null;
+    if (st.rerun) { st.rerun = false; schedule(folder, 0); }
+  });
+  return st.running;
+}
+
+async function doRun(folder, st) {
   const c = cfg(folder);
   if (!c.get('enable', true) || folder.uri.scheme !== 'file') { clearFolder(st); updateStatus(); return null; }
-  try {
-    if (!st.ctx || Date.now() - st.ctx.builtAt > CONTEXT_TTL_MS) st.ctx = engine.createContext(folder.uri.fsPath);
-    const overrides = new Map();
-    for (const doc of vscode.workspace.textDocuments) {
-      if (doc.uri.scheme !== 'file' || !doc.isDirty) continue;
-      const rel = relIn(folder, doc.uri.fsPath);
-      if (rel && engine.classifyInstructionFile(rel)) overrides.set(doc.uri.fsPath, doc.getText());
-    }
-    const result = engine.analyzeWorkspace(folder.uri.fsPath, {
-      context: st.ctx,
-      overrides,
+  const overrides = [];
+  for (const doc of vscode.workspace.textDocuments) {
+    if (doc.uri.scheme !== 'file' || !doc.isDirty) continue;
+    const rel = relIn(folder, doc.uri.fsPath);
+    if (rel && engine.classifyInstructionFile(rel)) overrides.push([doc.uri.fsPath, doc.getText()]);
+  }
+  const invalidate = st.invalidate;
+  st.invalidate = 'none';
+  const trusted = vscode.workspace.isTrusted !== false;
+  const useGit = trusted && c.get('useGit', true);
+  const res = await runner.request({
+    type: 'analyze',
+    root: folder.uri.fsPath,
+    invalidate,
+    overrides,
+    options: {
       ignoreRules: c.get('ignoreRules', []),
-      git: c.get('gitStaleness', true) && vscode.workspace.isTrusted,
+      git: useGit,
+      stale: useGit && c.get('gitStaleness', false),
       staleDays: c.get('staleDays', 180),
       staleCommits: c.get('staleCommits', 50),
-    });
-    const byFile = new Map();
-    for (const d of result.diagnostics) {
-      if (!byFile.has(d.absFile)) byFile.set(d.absFile, []);
-      byFile.get(d.absFile).push(d);
-    }
-    for (const k of actionData.keys()) if (st.uris.has(k.slice(0, k.indexOf('|')))) actionData.delete(k);
-    const newUris = new Set();
-    for (const [abs, list] of byFile) {
-      const uri = vscode.Uri.file(abs);
-      newUris.add(uri.toString());
-      collection.set(uri, list.map((d) => toDiagnostic(uri, folder, d)));
-    }
-    for (const u of st.uris) if (!newUris.has(u)) collection.delete(vscode.Uri.parse(u));
-    st.uris = newUris;
-    st.count = result.diagnostics.filter((d) => d.severity !== 'info').length;
-    st.infos = result.diagnostics.length - st.count;
-    st.files = result.files.length;
+    },
+  });
+  if (!res || !res.ok) {
+    if (LEVEL[invalidate] > LEVEL[st.invalidate]) st.invalidate = invalidate;
+    st.timedOut = !!(res && res.timeout);
+    if (res && !res.timeout && res.error !== 'restarted') console.error('[context-drift]', res.error);
     updateStatus();
-    return result;
-  } catch (e) {
-    console.error('[context-drift]', e);
     return null;
   }
+  st.timedOut = false;
+  if (!folderState.has(folder.uri.toString())) return null; // folder removed meanwhile
+  const byFile = new Map();
+  for (const d of res.diagnostics) {
+    if (!byFile.has(d.absFile)) byFile.set(d.absFile, []);
+    byFile.get(d.absFile).push(d);
+  }
+  for (const k of actionData.keys()) if (st.uris.has(k.slice(0, k.indexOf('|')))) actionData.delete(k);
+  const newUris = new Set();
+  for (const [abs, list] of byFile) {
+    const uri = vscode.Uri.file(abs);
+    newUris.add(uri.toString());
+    collection.set(uri, list.map((d) => toDiagnostic(uri, folder, d)));
+  }
+  for (const u of st.uris) if (!newUris.has(u)) collection.delete(vscode.Uri.parse(u));
+  st.uris = newUris;
+  st.count = res.diagnostics.filter((d) => d.severity !== 'info').length;
+  st.infos = res.diagnostics.length - st.count;
+  st.files = res.files.length;
+  st.skipped = res.skipped.length;
+  updateStatus();
+  return res;
 }
 
 function toDiagnostic(uri, folder, d) {
@@ -109,7 +194,6 @@ function toDiagnostic(uri, folder, d) {
   const diag = new vscode.Diagnostic(range, d.message, sev);
   diag.source = SOURCE;
   diag.code = { value: d.ruleId, target: vscode.Uri.parse(DOCS + (RULE_ANCHOR[d.ruleId] || 'rules')) };
-  if (d.ruleId === 'CD006') diag.tags = [];
   if (d.related && d.related.length) {
     diag.relatedInformation = d.related.map((r) => new vscode.DiagnosticRelatedInformation(
       new vscode.Location(vscode.Uri.file(path.join(folder.uri.fsPath, r.file)), new vscode.Range(r.line, r.column, r.line, Math.max(r.endColumn || 0, r.column + 1))), r.message));
@@ -119,15 +203,37 @@ function toDiagnostic(uri, folder, d) {
 }
 
 function updateStatus() {
-  let count = 0, infos = 0, files = 0;
-  for (const st of folderState.values()) { count += st.count || 0; infos += st.infos || 0; files += st.files || 0; }
-  if (!files) { statusItem.hide(); return; }
-  statusItem.text = count ? `$(warning) Drift: ${count}` : '$(check) Drift: 0';
-  statusItem.tooltip = `Context Drift: ${count} problem(s) and ${infos} note(s) in ${files} agent instruction file(s). Click to re-check the workspace.`;
+  let count = 0, infos = 0, files = 0, skipped = 0, timedOut = false;
+  for (const st of folderState.values()) { count += st.count || 0; infos += st.infos || 0; files += st.files || 0; skipped += st.skipped || 0; timedOut = timedOut || st.timedOut; }
+  if (!files && !timedOut) { statusItem.hide(); return; }
+  statusItem.text = timedOut ? '$(clock) Drift: timed out' : count ? `$(warning) Drift: ${count}` : '$(check) Drift: 0';
+  statusItem.tooltip = timedOut
+    ? 'Context Drift: the check took longer than 30 s and was stopped. Click to try again.'
+    : `Context Drift: ${count} problem(s) and ${infos} note(s) in ${files} agent instruction file(s)` +
+      (skipped ? `; ${skipped} file(s) not fully checked (too large, long lines or outside the workspace)` : '') + '. Click to re-check the workspace.';
   statusItem.show();
 }
 
 /* ---------------- code actions ---------------- */
+
+/** Where a "disable" directive must go for `line`: a YAML comment in frontmatter, above the fence for code blocks. */
+function directiveEdit(document, line, ruleId) {
+  const text = typeof document.getText === 'function' ? document.getText() : null;
+  let at = line;
+  let yaml = false;
+  if (text !== null) {
+    const doc = engine._internal.scanDocument(text);
+    if (doc.frontmatter && line > doc.frontmatter.start && line < doc.frontmatter.end) yaml = true;
+    else {
+      const f = doc.fences.find((x) => line > x.start && line <= x.end);
+      if (f) at = f.start;
+    }
+  }
+  const lt = document.lineAt(at);
+  const indent = lt.text.slice(0, lt.firstNonWhitespaceCharacterIndex);
+  const comment = yaml ? `${indent}# context-drift-disable-next-line ${ruleId}\n` : `${indent}<!-- context-drift-disable-next-line ${ruleId} -->\n`;
+  return { position: new vscode.Position(at, 0), text: comment, block: at !== line };
+}
 
 class DriftActions {
   provideCodeActions(document, _range, context) {
@@ -160,12 +266,11 @@ class DriftActions {
         a.diagnostics = [diag];
         actions.push(a);
       }
-      if (/\.(md|mdc)$/i.test(document.uri.fsPath) && d.ruleId !== 'CD006') {
-        const line = document.lineAt(d.line);
-        const indent = line.text.slice(0, line.firstNonWhitespaceCharacterIndex);
-        const a = new vscode.CodeAction(`Disable ${d.ruleId} for this line`, vscode.CodeActionKind.QuickFix);
+      if (/\.(md|mdc)$/i.test(document.uri.fsPath) && d.ruleId !== 'CD006' && data.kind !== 'not-project-root' && data.kind !== 'capped') {
+        const e = directiveEdit(document, d.line, d.ruleId);
+        const a = new vscode.CodeAction(e.block ? `Disable ${d.ruleId} for this code block` : `Disable ${d.ruleId} for this line`, vscode.CodeActionKind.QuickFix);
         a.edit = new vscode.WorkspaceEdit();
-        a.edit.insert(document.uri, new vscode.Position(d.line, 0), `${indent}<!-- context-drift-disable-next-line ${d.ruleId} -->\n`);
+        a.edit.insert(document.uri, e.position, e.text);
         a.diagnostics = [diag];
         actions.push(a);
       }
@@ -180,27 +285,35 @@ class DriftActions {
 
 /* ---------------- activation ---------------- */
 
+async function hasInstructionFiles() {
+  if (typeof vscode.workspace.findFiles !== 'function') return true;
+  try {
+    const found = await vscode.workspace.findFiles(INSTRUCTION_GLOB, '**/{node_modules,.git,dist,build,vendor,target,.venv}/**', 1);
+    return found.length > 0;
+  } catch (_) { return true; }
+}
+
 function activate(context) {
   collection = vscode.languages.createDiagnosticCollection(SOURCE);
   statusItem = vscode.window.createStatusBarItem('contextDrift.status', vscode.StatusBarAlignment.Left, 20);
   statusItem.name = 'Context Drift';
   statusItem.command = 'contextDrift.checkWorkspace';
-  context.subscriptions.push(collection, statusItem);
+  runner = new EngineRunner();
+  context.subscriptions.push(collection, statusItem, { dispose: () => runner && runner.dispose() });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('contextDrift.checkWorkspace', async () => {
-      invalidateAll();
       let total = 0, files = 0;
-      for (const f of vscode.workspace.workspaceFolders || []) {
-        const r = runFolder(f);
-        if (r) { total += r.diagnostics.length; files += r.files.length; }
-      }
+      const folders = vscode.workspace.workspaceFolders || [];
+      for (const f of folders) markInvalid(f, 'files');
+      const results = await Promise.all(folders.map((f) => runFolder(f)));
+      for (const r of results) if (r) { total += r.diagnostics.length; files += r.files.length; }
       if (!files) {
         vscode.window.showInformationMessage('Context Drift: no agent instruction files (AGENTS.md, CLAUDE.md, ...) found in this workspace.');
         return;
       }
       const pick = await vscode.window.showInformationMessage(`Context Drift: ${total} finding(s) in ${files} instruction file(s).`, total ? 'Show Problems' : undefined);
-      if (pick === 'Show Problems') vscode.commands.executeCommand('workbench.actions.view.problems');
+      if (pick === 'Show Problems') Promise.resolve(vscode.commands.executeCommand('workbench.actions.view.problems')).catch(() => {});
     }),
     vscode.commands.registerCommand('contextDrift.openManifest', async (file, needle) => {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
@@ -223,35 +336,60 @@ function activate(context) {
     vscode.languages.registerCodeActionsProvider([{ scheme: 'file', pattern: INSTRUCTION_GLOB }], new DriftActions(), { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
   );
 
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument((doc) => { const f = isInstructionDoc(doc); if (f) schedule(f, 50); }),
-    vscode.workspace.onDidChangeTextDocument((e) => { const f = isInstructionDoc(e.document); if (f && e.contentChanges.length) schedule(f); }),
-    vscode.workspace.onDidSaveTextDocument((doc) => {
-      const f = vscode.workspace.getWorkspaceFolder(doc.uri);
-      if (!f) return;
-      if (!isInstructionDoc(doc)) invalidate(f);
-      schedule(f, 50);
-    }),
-    vscode.workspace.onDidCreateFiles(() => { invalidateAll(); scheduleAll(); }),
-    vscode.workspace.onDidDeleteFiles(() => { invalidateAll(); scheduleAll(); }),
-    vscode.workspace.onDidRenameFiles(() => { invalidateAll(); scheduleAll(); }),
-    vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration('contextDrift')) scheduleAll(0); }),
-    vscode.workspace.onDidChangeWorkspaceFolders((e) => {
-      for (const f of e.removed) { const st = folderState.get(f.uri.toString()); if (st) clearFolder(st); folderState.delete(f.uri.toString()); }
-      for (const f of e.added) schedule(f, 0);
-      updateStatus();
-    }),
-    vscode.workspace.onDidGrantWorkspaceTrust(() => scheduleAll(0)),
-  );
+  const on = (ev, fn) => { if (typeof ev === 'function') context.subscriptions.push(ev(fn)); };
+  const ws = vscode.workspace;
+  on(ws.onDidOpenTextDocument, (doc) => { const f = isInstructionDoc(doc); if (f) schedule(f, 50, 'none'); });
+  on(ws.onDidChangeTextDocument, (e) => { const f = isInstructionDoc(e.document); if (f && e.contentChanges.length) schedule(f, DEBOUNCE_MS, 'none'); });
+  // Saves: re-check only for instruction files and manifests; any other save changes nothing the engine reads.
+  on(ws.onDidSaveTextDocument, (doc) => {
+    const f = isInstructionDoc(doc);
+    if (f) { schedule(f, 50, 'none'); return; }
+    const folder = doc && doc.uri && doc.uri.scheme === 'file' ? ws.getWorkspaceFolder(doc.uri) : null;
+    if (folder && isManifestPath(doc.uri.fsPath)) schedule(folder, 50, 'manifests');
+  });
+  // Closing a dirty instruction file without saving: drop the diagnostics computed from the unsaved text.
+  on(ws.onDidCloseTextDocument, (doc) => { const f = isInstructionDoc(doc); if (f) schedule(f, 50, 'none'); });
+  const filesChanged = (e) => {
+    const uris = [].concat(e && e.files ? e.files : []).map((x) => (x && x.newUri) || x);
+    for (const f of ws.workspaceFolders || []) if (!uris.length || uris.some((u) => u && u.fsPath && relIn(f, u.fsPath) !== null)) schedule(f, DEBOUNCE_MS, 'files');
+  };
+  on(ws.onDidCreateFiles, filesChanged);
+  on(ws.onDidDeleteFiles, filesChanged);
+  on(ws.onDidRenameFiles, filesChanged);
+  on(ws.onDidChangeConfiguration, (e) => { if (e.affectsConfiguration('contextDrift')) scheduleAll(0, 'none'); });
+  on(ws.onDidChangeWorkspaceFolders, (e) => {
+    for (const f of e.removed) {
+      const st = folderState.get(f.uri.toString());
+      if (st) clearFolder(st);
+      folderState.delete(f.uri.toString());
+      if (runner) runner.request({ type: 'forget', root: f.uri.fsPath });
+    }
+    for (const f of e.added) schedule(f, 0, 'files');
+    updateStatus();
+  });
+  on(ws.onDidGrantWorkspaceTrust, () => scheduleAll(0, 'none'));
 
-  for (const glob of [MANIFEST_GLOB, INSTRUCTION_GLOB]) {
-    const w = vscode.workspace.createFileSystemWatcher(glob);
-    const onFs = (uri) => { const f = vscode.workspace.getWorkspaceFolder(uri); if (f) { invalidate(f); schedule(f); } };
-    w.onDidCreate(onFs); w.onDidChange(onFs); w.onDidDelete(onFs);
+  const watch = (glob, onChange, onCreateDelete) => {
+    const w = ws.createFileSystemWatcher(glob);
+    const wrap = (level, delay) => (uri) => {
+      const f = ws.getWorkspaceFolder(uri);
+      if (f && !isIgnoredPath(f, uri.fsPath)) schedule(f, delay, level);
+    };
+    if (onChange) w.onDidChange(wrap(onChange, DEBOUNCE_MS));
+    w.onDidCreate(wrap(onCreateDelete, DEBOUNCE_MS));
+    w.onDidDelete(wrap(onCreateDelete, DEBOUNCE_MS));
     context.subscriptions.push(w);
-  }
+  };
+  watch(MANIFEST_GLOB, 'manifests', 'files');
+  watch(INSTRUCTION_GLOB, 'none', 'files');
+  // any other created or deleted file can make a referenced path appear or disappear: re-walk, debounced
+  const any = ws.createFileSystemWatcher('**/*', false, true, false);
+  const onAny = (uri) => { const f = ws.getWorkspaceFolder(uri); if (f && !isIgnoredPath(f, uri.fsPath)) schedule(f, FS_DEBOUNCE_MS, 'files'); };
+  any.onDidCreate(onAny);
+  any.onDidDelete(onAny);
+  context.subscriptions.push(any);
 
-  scheduleAll(0);
+  hasInstructionFiles().then((yes) => { if (yes) scheduleAll(0, 'files'); }, () => scheduleAll(0, 'files'));
 }
 
 function deactivate() {
@@ -259,6 +397,7 @@ function deactivate() {
   timers.clear();
   folderState.clear();
   actionData.clear();
+  if (runner) { runner.dispose(); runner = null; }
 }
 
-module.exports = { activate, deactivate };
+module.exports = { activate, deactivate, _test: { getRunner: () => runner, folderState } };

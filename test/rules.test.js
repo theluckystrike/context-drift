@@ -34,9 +34,9 @@ test('CD001 TN: npm run build / npm test / npm install exist or are built-ins', 
   assert.equal(at(npm, 'AGENTS.md', 7).length, 0);
 });
 
-test('CD001 edge: npm start without a start script and without server.js', () => {
+test('CD001 edge: npm start without a start script and without server.js (lifecycle form: warning)', () => {
   const [d] = at(npm, 'AGENTS.md', 6, 'CD001');
-  assert.deepEqual([d.severity, d.column, d.endColumn], ['error', 7, 12]);
+  assert.deepEqual([d.severity, d.column, d.endColumn], ['warning', 7, 12]);
   assert.equal(d.fix, undefined);
 });
 
@@ -68,9 +68,9 @@ test('CD001 edge: --filter searches all workspace packages', () => {
   assert.equal(at(mono, 'packages/web/AGENTS.md', 6).length, 0);
 });
 
-test('CD001 TP: `pnpm -r run e2e` missing in every package is an error', () => {
+test('CD001 TP: `pnpm -r run e2e` missing in every package is a warning (workspace-wide form)', () => {
   const [d] = at(mono, 'packages/web/AGENTS.md', 7, 'CD001');
-  assert.deepEqual([d.severity, d.column, d.endColumn], ['error', 15, 18]);
+  assert.deepEqual([d.severity, d.column, d.endColumn], ['warning', 15, 18]);
 });
 
 test('CD001 edge: script defined only in a workspace package is not reported from the root', () => {
@@ -123,7 +123,7 @@ test('CD001 TP: uv run of an unknown script is a warning', () => {
 test('CD001 TP/TN: cargo -p crate names', () => {
   assert.equal(at(gc, 'AGENTS.md', 3).length, 0);
   const [d] = at(gc, 'AGENTS.md', 4, 'CD001');
-  assert.deepEqual([d.severity, d.column, d.endColumn], ['error', 17, 21]);
+  assert.deepEqual([d.severity, d.column, d.endColumn], ['warning', 17, 21]);
   assert.match(d.message, /Did you mean "cli"/);
 });
 

@@ -24,10 +24,10 @@ function gitRepo(fileDate, n, laterDate) {
   return r;
 }
 
-test('CD006 TP: file 400+ days old with 55 commits since', { skip: !hasGit() }, () => {
+test('CD006 TP: file 400+ days old with 55 commits since (opt-in with stale:true, async git)', { skip: !hasGit() }, async () => {
   const r = gitRepo('2025-09-01T12:00:00Z', 55, '2026-10-01T12:00:00Z');
   try {
-    const res = engine.analyzeWorkspace(r.dir, { now: NOW });
+    const res = await engine.analyzeWorkspaceAsync(r.dir, { now: NOW, stale: true });
     assert.equal(res.diagnostics.length, 1);
     const d = res.diagnostics[0];
     assert.deepEqual([d.ruleId, d.severity, d.line, d.column, d.endColumn], ['CD006', 'info', 0, 0, 11]);
@@ -35,19 +35,51 @@ test('CD006 TP: file 400+ days old with 55 commits since', { skip: !hasGit() }, 
   } finally { r.cleanup(); }
 });
 
-test('CD006 TN: old file but only 10 commits since', { skip: !hasGit() }, () => {
-  const r = gitRepo('2025-09-01T12:00:00Z', 10, '2026-10-01T12:00:00Z');
-  try { assert.deepEqual(engine.analyzeWorkspace(r.dir, { now: NOW }).diagnostics, []); } finally { r.cleanup(); }
+test('CD006 is off by default, and the sync API never runs git', { skip: !hasGit() }, async () => {
+  const r = gitRepo('2025-09-01T12:00:00Z', 55, '2026-10-01T12:00:00Z');
+  try {
+    assert.deepEqual((await engine.analyzeWorkspaceAsync(r.dir, { now: NOW })).diagnostics, []);
+    assert.deepEqual(engine.analyzeWorkspace(r.dir, { now: NOW, stale: true }).diagnostics, []);
+  } finally { r.cleanup(); }
 });
 
-test('CD006 edge: recent file, and git:false / no git repo skip silently', { skip: !hasGit() }, () => {
+test('CD006 TN: old file but only 10 commits since', { skip: !hasGit() }, async () => {
+  const r = gitRepo('2025-09-01T12:00:00Z', 10, '2026-10-01T12:00:00Z');
+  try { assert.deepEqual((await engine.analyzeWorkspaceAsync(r.dir, { now: NOW, stale: true })).diagnostics, []); } finally { r.cleanup(); }
+});
+
+test('CD006 edge: recent file, and git:false / no git repo skip silently', { skip: !hasGit() }, async () => {
   const r = gitRepo('2026-10-01T12:00:00Z', 60, '2026-10-02T12:00:00Z');
   try {
-    assert.deepEqual(engine.analyzeWorkspace(r.dir, { now: NOW }).diagnostics, []);
-    assert.deepEqual(engine.analyzeWorkspace(r.dir, { now: NOW, git: false, staleDays: 1 }).diagnostics, []);
+    assert.deepEqual((await engine.analyzeWorkspaceAsync(r.dir, { now: NOW, stale: true })).diagnostics, []);
+    assert.deepEqual((await engine.analyzeWorkspaceAsync(r.dir, { now: NOW, stale: true, git: false, staleDays: 1 })).diagnostics, []);
   } finally { r.cleanup(); }
   const plain = tempRepo({ 'AGENTS.md': '# x\n' });
-  try { assert.deepEqual(engine.analyzeWorkspace(plain.dir, { now: NOW }).diagnostics, []); } finally { plain.cleanup(); }
+  try { assert.deepEqual((await engine.analyzeWorkspaceAsync(plain.dir, { now: NOW, stale: true })).diagnostics, []); } finally { plain.cleanup(); }
+});
+
+test('git runs with a timeout: a hung git resolves to null within the budget', async () => {
+  const t0 = Date.now();
+  // `git cat-file --batch` waits for stdin forever; the runner must give up on its timer
+  const out = await engine._internal.runGit(__dirname, ['cat-file', '--batch'], { timeout: 300, input: undefined });
+  assert.ok(out === null || typeof out === 'string');
+  assert.ok(Date.now() - t0 < 2000);
+});
+
+test('git check-ignore and ls-files drop ignored and tracked-but-absent paths', { skip: !hasGit() }, async () => {
+  const r = gitRepo('2026-10-01T12:00:00Z', 0, '2026-10-01T12:00:00Z');
+  try {
+    fs.writeFileSync(path.join(r.dir, 'package.json'), '{"name":"x"}');
+    fs.writeFileSync(path.join(r.dir, '.git', 'info', 'exclude'), 'secret-out/\n');
+    fs.mkdirSync(path.join(r.dir, 'docs'));
+    fs.writeFileSync(path.join(r.dir, 'docs', 'kept.md'), 'x');
+    cp.execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', 'add', '.'], { cwd: r.dir, stdio: 'ignore' });
+    cp.execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'x'], { cwd: r.dir, stdio: 'ignore' });
+    fs.rmSync(path.join(r.dir, 'docs', 'kept.md')); // tracked in the index, missing on disk (like a sparse checkout)
+    fs.writeFileSync(path.join(r.dir, 'AGENTS.md'), 'See `docs/kept.md`, `secret-out/x.json` and `docs/gone.md`.\n');
+    const res = await engine.analyzeWorkspaceAsync(r.dir, { now: NOW });
+    assert.deepEqual(res.diagnostics.map((d) => d.message), ['Path "docs/gone.md" does not exist in the repo.']);
+  } finally { r.cleanup(); }
 });
 
 /* ---------------- CLI ---------------- */
@@ -60,7 +92,7 @@ test('CLI: exit 1 when errors exist; text output is file:line:col', () => {
   const r = cli(['--no-git', 'npm-basic']);
   assert.equal(r.status, 1);
   assert.match(r.stdout, /^npm-basic\/AGENTS\.md:4:12: error CD001 /m);
-  assert.match(r.stdout, /4 error\(s\), 5 warning\(s\), 2 info/);
+  assert.match(r.stdout, /3 error\(s\), 6 warning\(s\), 2 info/);
 });
 
 test('CLI: exit 0 when only info findings exist', () => {
@@ -70,7 +102,7 @@ test('CLI: exit 0 when only info findings exist', () => {
 test('CLI: --json is valid JSON with 1-based positions', () => {
   const r = cli(['--json', '--no-git', 'make-just']);
   const j = JSON.parse(r.stdout);
-  assert.deepEqual(j.counts, { error: 4, warning: 0, info: 0 });
+  assert.deepEqual(j.counts, { error: 2, warning: 2, info: 0 });
   assert.deepEqual(j.diagnostics.map((d) => `${d.ruleId}@${d.line}:${d.column}`), ['CD001@4:9', 'CD001@9:9', 'CD001@11:9', 'CD001@12:9']);
 });
 
