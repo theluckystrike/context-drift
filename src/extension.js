@@ -24,6 +24,8 @@ let runner;
 const folderState = new Map(); // folder uri string -> state
 const timers = new Map();
 const actionData = new Map(); // key -> diagnostic payload for code actions
+// uri string -> document version the last check read (null: the file wasn't open, so the check read it from disk)
+const checkedVersions = new Map();
 
 function cfg(folder) { return vscode.workspace.getConfiguration('contextDrift', folder ? folder.uri : undefined); }
 
@@ -128,7 +130,7 @@ function schedule(folder, delay, level) {
 function scheduleAll(delay, level) { for (const f of vscode.workspace.workspaceFolders || []) schedule(f, delay, level); }
 
 function clearFolder(st) {
-  for (const u of st.uris) collection.delete(vscode.Uri.parse(u));
+  for (const u of st.uris) { collection.delete(vscode.Uri.parse(u)); checkedVersions.delete(u); }
   st.uris = new Set();
   st.count = 0;
   st.infos = 0;
@@ -151,8 +153,11 @@ async function doRun(folder, st) {
   const c = cfg(folder);
   if (!c.get('enable', true) || folder.uri.scheme !== 'file') { clearFolder(st); updateStatus(); return null; }
   const overrides = [];
+  const versions = new Map(); // versions of the open documents, taken with the text the check reads
   for (const doc of vscode.workspace.textDocuments) {
-    if (doc.uri.scheme !== 'file' || !doc.isDirty) continue;
+    if (doc.uri.scheme !== 'file') continue;
+    versions.set(doc.uri.toString(), typeof doc.version === 'number' ? doc.version : null);
+    if (!doc.isDirty) continue;
     const rel = relIn(folder, doc.uri.fsPath);
     if (rel && engine.classifyInstructionFile(rel)) overrides.push([doc.uri.fsPath, doc.getText()]);
   }
@@ -198,8 +203,9 @@ async function doRun(folder, st) {
     const uri = vscode.Uri.file(abs);
     newUris.add(uri.toString());
     collection.set(uri, list.map((d) => toDiagnostic(uri, folder, d)));
+    checkedVersions.set(uri.toString(), versions.has(uri.toString()) ? versions.get(uri.toString()) : null);
   }
-  for (const u of st.uris) if (!newUris.has(u)) collection.delete(vscode.Uri.parse(u));
+  for (const u of st.uris) if (!newUris.has(u)) { collection.delete(vscode.Uri.parse(u)); checkedVersions.delete(u); }
   st.uris = newUris;
   st.count = res.diagnostics.filter((d) => d.severity !== 'info').length;
   st.infos = res.diagnostics.length - st.count;
@@ -300,8 +306,65 @@ class DriftActions {
       ig.diagnostics = [diag];
       actions.push(ig);
     }
+    const all = actions.length ? fixAllAction(document) : null;
+    if (all) actions.push(all);
     return actions;
   }
+}
+
+/** True when `document` still has the text the last check read, so the stored fix ranges are valid. */
+function unchangedSinceCheck(document) {
+  const uri = document.uri.toString();
+  if (!checkedVersions.has(uri)) return false;
+  const v = checkedVersions.get(uri);
+  if (v === null) return !document.isDirty; // not open at check time: the check read the saved file
+  return document.version === v;
+}
+
+/**
+ * One action that applies every one-click fix in the file. It is offered only when the document version is the one
+ * the last check read: after any edit, every stored range may be stale, so "Apply all" waits for the re-check.
+ * Only fixes whose diagnostic is in the published list are used, and a fix that overlaps an earlier one is skipped,
+ * so the edit never conflicts with itself.
+ */
+function fixAllAction(document) {
+  if (!unchangedSinceCheck(document)) return null;
+  const uri = document.uri.toString();
+  let current = null;
+  if (typeof vscode.languages.getDiagnostics === 'function') {
+    current = vscode.languages.getDiagnostics(document.uri).filter((x) => x.source === SOURCE);
+  }
+  const fixes = [];
+  const seen = new Set();
+  const consider = (k, diag) => {
+    if (seen.has(k)) return;
+    seen.add(k);
+    const entry = actionData.get(k);
+    if (!entry || !entry.d.fix) return;
+    fixes.push({ f: entry.d.fix, diag });
+  };
+  if (current) {
+    for (const x of current) {
+      const code = typeof x.code === 'object' ? x.code.value : x.code;
+      consider(key(uri, x.range.start.line, x.range.start.character, code), x);
+    }
+  } else {
+    for (const k of actionData.keys()) if (k.slice(0, k.indexOf('|')) === uri) consider(k, null);
+  }
+  fixes.sort((a, b) => a.f.line - b.f.line || a.f.column - b.f.column);
+  const keep = [];
+  for (const x of fixes) {
+    const prev = keep.length ? keep[keep.length - 1].f : null;
+    if (prev && (x.f.line < prev.endLine || (x.f.line === prev.endLine && x.f.column < prev.endColumn))) continue;
+    keep.push(x);
+  }
+  if (keep.length < 2) return null;
+  const a = new vscode.CodeAction(`Apply all ${keep.length} Context Drift fixes in this file`, vscode.CodeActionKind.QuickFix);
+  a.edit = new vscode.WorkspaceEdit();
+  for (const { f } of keep) a.edit.replace(document.uri, new vscode.Range(f.line, f.column, f.endLine, f.endColumn), f.newText);
+  const diags = keep.map((x) => x.diag).filter(Boolean);
+  if (diags.length) a.diagnostics = diags;
+  return a;
 }
 
 /* ---------------- activation ---------------- */
@@ -348,6 +411,8 @@ function activate(context) {
         }
       }
     }),
+    vscode.commands.registerCommand('contextDrift.openWalkthrough', () => vscode.commands.executeCommand(
+      'workbench.action.openWalkthrough', `${context.extension ? context.extension.id : 'zovo.context-drift'}#contextDrift.start`, false)),
     vscode.commands.registerCommand('contextDrift.revealFolder', (dir) => vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(dir))),
     vscode.commands.registerCommand('contextDrift.ignoreRule', async (ruleId) => {
       const c = vscode.workspace.getConfiguration('contextDrift');
@@ -418,6 +483,7 @@ function deactivate() {
   timers.clear();
   folderState.clear();
   actionData.clear();
+  checkedVersions.clear();
   if (runner) { runner.dispose(); runner = null; }
 }
 

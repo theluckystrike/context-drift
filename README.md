@@ -1,6 +1,23 @@
 # Context Drift for AGENTS.md & CLAUDE.md
 
-Your CLAUDE.md says `make test` and Node 18. Your repo says otherwise.
+Context Drift finds the commands, paths and versions in your AGENTS.md, CLAUDE.md, Cursor and Copilot rules that no longer match your repo.
+
+![A drawing of AGENTS.md with five findings underlined, and the same five findings printed by the CLI](images/demo.png)
+
+*Drawn from real output on [`test/fixtures/readme-example`](test/fixtures/readme-example). The editor half is a drawing made from the CLI's JSON output. The CLI half is its real text output.*
+
+- Catch renamed scripts, moved files and the wrong package manager before your coding agent trips on them.
+- A quick fix replaces a wrong script, path or package manager in one click, and "Apply all" fixes the whole file.
+- It runs locally with no network and no account, and the same check runs in CI.
+
+## Quick start
+
+1. Install Context Drift and open a folder that has an `AGENTS.md`, `CLAUDE.md` or other agent instruction file. Findings show up as squiggles and in the Problems panel.
+2. Put the cursor on a finding and press `Ctrl+.` (`Cmd+.` on macOS) to fix it.
+
+For a short tour, run "Context Drift: Get Started" from the Command Palette.
+
+## Why
 
 Agent instruction files state facts about your repo, like which commands to run, where files live, and which package manager and runtime to use. Code moves on and these files don't. Then the agent runs a script that no longer exists, opens a file that moved, or installs with the wrong package manager.
 
@@ -156,8 +173,9 @@ Context Drift doesn't lint the *format* of instruction files (frontmatter, rule 
 - The checks and git run in a worker thread, never on the extension host. The repository view is cached. An instruction-file edit reuses it, a manifest change re-reads only the manifests, and only created or deleted files make it walk the folder again. The engine stops after 20 s and returns what it has, and lists the files it didn't check. The worker is stopped when one folder's check runs longer than 30 s, counted from when the worker starts that check. In a multi-root workspace, the other folders' checks that this drops are run again.
 - Run the command "Context Drift: Check Workspace" to check everything.
 - The status bar shows `Drift: N` (warnings and errors). Click it to re-check.
+- Run "Context Drift: Get Started" to open the walkthrough.
 
-Quick fixes can replace a script, target or path with the suggestion, or replace the package manager. They can also show scripts in `package.json`, open the Makefile, or reveal the referenced file's folder. And they can disable a check for this line (or code block) or ignore a rule in this workspace.
+Quick fixes can replace a script, target or path with the suggestion, or replace the package manager. When a file has two or more of these fixes, "Apply all N Context Drift fixes in this file" applies them in one edit. It shows only while the file is unchanged since the last check, so it never applies a fix at an old position. After you type, it comes back when the re-check finishes (about half a second). It leaves out a fix that overlaps another one. They can also show scripts in `package.json`, open the Makefile, or reveal the referenced file's folder. And they can disable a check for this line (or code block) or ignore a rule in this workspace.
 
 ### Settings
 

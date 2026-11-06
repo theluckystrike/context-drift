@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.5 (2026-11-06)
+
+### Editor
+- New quick fix "Apply all N Context Drift fixes in this file". It shows when a file has two or more one-click fixes (script, path or package manager) and applies them in one edit. It shows only while the file is unchanged since the last check (a document version check), so it never applies a fix at an old position. It leaves out a fix that overlaps another one.
+- New walkthrough, "Get started with Context Drift", with four steps. Open it from the Welcome page or with "Context Drift: Get Started".
+
+### Listing
+- The README opens with one sentence, a picture rendered from real output, three benefits and a two-step quick start.
+- 30 keywords instead of 11, all about the files and facts Context Drift checks.
+
+### Other
+- `context-drift --version` and the JSON output now report the right version (0.1.4 still said 0.1.3).
+
 ## 0.1.4
 
 Plainer README and Marketplace wording. No code changes.

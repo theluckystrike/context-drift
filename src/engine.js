@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.1.3';
+const VERSION = '0.1.5';
 
 const RULES = {
   CD001: { id: 'CD001', name: 'command-drift', defaultSeverity: 'error', description: 'A documented command does not exist in the repo. Error for `npm run X`, `pnpm run X` and `make X` checked against the manifest at the right level; warning for every heuristic form (bare `pnpm X`, `yarn X`, `npm test`, just, task, cargo, uv/poetry).' },

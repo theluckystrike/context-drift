@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "Context Drift for AGENTS.md & CLAUDE.md",
   "description": "Finds stale facts in AGENTS.md, CLAUDE.md, GEMINI.md, Cursor and Copilot rules, such as missing npm scripts, make targets and paths, the wrong package manager, or wrong Node/Python/Go versions. Runs locally with no network.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",
@@ -28,16 +28,35 @@
   ],
   "keywords": [
     "agents.md",
+    "agents",
     "claude.md",
-    "cursor rules",
-    "copilot instructions",
+    "claude code",
+    "codex",
     "gemini.md",
-    "ai agents",
-    "drift",
+    "gemini cli",
+    "cursor rules",
     "cursorrules",
+    "copilot instructions",
+    "github copilot",
+    "windsurf",
     "windsurfrules",
+    "cline",
+    "clinerules",
     "skill.md",
-    "linter"
+    "ai agents",
+    "coding agent",
+    "context",
+    "drift",
+    "stale",
+    "linter",
+    "lint",
+    "markdown",
+    "npm scripts",
+    "makefile",
+    "package manager",
+    "lockfile",
+    "nvmrc",
+    "monorepo"
   ],
   "main": "./src/extension.js",
   "bin": {
@@ -71,6 +90,11 @@
       {
         "command": "contextDrift.checkWorkspace",
         "title": "Check Workspace",
+        "category": "Context Drift"
+      },
+      {
+        "command": "contextDrift.openWalkthrough",
+        "title": "Get Started",
         "category": "Context Drift"
       }
     ],
@@ -135,7 +159,61 @@
           "description": "...and the repo has at least this many commits since."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "contextDrift.start",
+        "title": "Get started with Context Drift",
+        "description": "Find commands, paths and versions in your agent instruction files that no longer match the repo.",
+        "steps": [
+          {
+            "id": "open",
+            "title": "Open an agent instruction file",
+            "description": "Context Drift checks AGENTS.md, CLAUDE.md, GEMINI.md, Cursor, Copilot, Windsurf and Cline rules as soon as you open one.\n[Open AGENTS.md](command:workbench.action.quickOpen?%5B%22AGENTS.md%22%5D)\n[Open CLAUDE.md](command:workbench.action.quickOpen?%5B%22CLAUDE.md%22%5D)",
+            "media": {
+              "markdown": "walkthrough/open.md"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.quickOpen"
+            ]
+          },
+          {
+            "id": "check",
+            "title": "Check the whole workspace",
+            "description": "Check every instruction file at once. Findings go to the Problems panel, and the status bar shows Drift: N.\n[Check Workspace](command:contextDrift.checkWorkspace)",
+            "media": {
+              "image": "images/demo.png",
+              "altText": "AGENTS.md with five findings underlined, and the same five findings printed by the CLI."
+            },
+            "completionEvents": [
+              "onCommand:contextDrift.checkWorkspace"
+            ]
+          },
+          {
+            "id": "fix",
+            "title": "Fix a stale fact",
+            "description": "Put the cursor on a squiggle and press Ctrl+. to replace a wrong script, path or package manager. A file with two or more fixes also gets \"Apply all\".\n[Show Problems](command:workbench.actions.view.problems)",
+            "media": {
+              "markdown": "walkthrough/fix.md"
+            },
+            "completionEvents": [
+              "onCommand:workbench.actions.view.problems"
+            ]
+          },
+          {
+            "id": "ci",
+            "title": "Run the same check in CI",
+            "description": "The CLI uses the same engine. Add it to a pull request check so drift never reaches main.\n[Open Context Drift settings](command:workbench.action.openSettings?%5B%22contextDrift%22%5D)",
+            "media": {
+              "markdown": "walkthrough/ci.md"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.openSettings"
+            ]
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "test": "node --test",
