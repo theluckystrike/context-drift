@@ -21,65 +21,82 @@ const FUNDING_LABELS = {
 // [id, name, one line]. Live ones are on the Marketplace. Queued ones are not there yet: they open GitHub.
 const LIVE = [
   [
-    "zovo.context-drift",
-    "Context Drift",
-    "finds stale facts in AGENTS.md, CLAUDE.md and other agent rule files."
-  ],
-  [
     "zovo.pdf-viewer-dark",
-    "PDF Viewer & Reader with Dark Mode",
+    "PDF Viewer & PDF Reader with Dark Mode",
     "reads PDFs with a real dark mode, search, an outline and thumbnails."
   ],
   [
     "zovo.table-viewer-vscode",
-    "CSV, Excel & Parquet Viewer",
-    "opens Parquet, Excel and CSV files as a sortable, filterable table."
+    "CSV Viewer, Excel Viewer & Parquet Viewer",
+    "opens CSV, TSV, Excel and Parquet files as a sortable, filterable table."
   ],
   [
     "zovo.docx-viewer-vscode",
-    "DOCX Viewer & Word Viewer",
-    "previews Word files with dark mode, an outline and search."
-  ],
-  [
-    "zovo.hdf5-netcdf-explorer",
-    "HDF5 & NetCDF Explorer",
-    "browses groups, variables and attributes in scientific data files."
+    "DOCX Viewer & Word Viewer with Dark Mode",
+    "previews Word and ODT files with dark mode, an outline and search."
   ],
   [
     "zovo.pptx-slide-viewer",
-    "PPTX Viewer for PowerPoint",
+    "PPTX Viewer & PowerPoint Viewer",
     "shows PowerPoint slides, thumbnails and speaker notes."
   ],
   [
-    "zovo.skill-shelf",
-    "Skill Shelf",
-    "lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load."
+    "zovo.zovo-json-tree-viewer",
+    "Large JSON Viewer & JSON Tree",
+    "shows large JSON files as a searchable tree, copies JSONPath and turns arrays of objects into a table."
   ],
   [
-    "zovo.tensor-viewer",
-    "Tensor Viewer",
-    "shows NPY, NPZ, Safetensors and GGUF tensors with stats and heatmaps."
-  ]
-];
-const QUEUED = [
-  [
-    "zovo.jsonl-viewer",
-    "JSONL Viewer",
-    "opens JSONL and NDJSON files as a table, as records or as a chat view.",
-    "https://github.com/theluckystrike/jsonl-viewer-vscode"
+    "zovo.zovo-jsonl-viewer",
+    "JSONL Viewer & NDJSON Table Viewer",
+    "opens JSONL and NDJSON files as a table, as records or as a chat view."
   ],
   [
     "zovo.sqlite-table-viewer",
-    "SQLite Table Viewer",
-    "browses SQLite tables read-only and runs SELECT queries.",
-    "https://github.com/theluckystrike/sqlite-table-viewer"
+    "SQLite Viewer & DB Viewer (Read-Only)",
+    "browses SQLite tables read-only and runs SELECT queries."
+  ],
+  [
+    "zovo.hdf5-netcdf-explorer",
+    "HDF5 & NetCDF Explorer (H5 Viewer)",
+    "browses groups, attributes and values in HDF5 and NetCDF files and plots slices."
+  ],
+  [
+    "zovo.tensor-viewer",
+    "GGUF, Safetensors & NPY Viewer (NumPy Viewer)",
+    "shows NPY, NPZ, Safetensors and GGUF tensors with stats and heatmaps."
+  ],
+  [
+    "zovo.video-preview-with-sound",
+    "MP4 Video Player & Video Preview with Sound",
+    "plays MP4, MOV, MKV and WebM files with their sound."
+  ],
+  [
+    "zovo.dxf-viewer",
+    "DXF Viewer & CAD Viewer for 2D Drawings",
+    "opens ASCII and binary DXF drawings with layers, measuring and PNG or SVG export."
+  ],
+  [
+    "zovo.context-drift",
+    "AGENTS.md & CLAUDE.md Linter (Context Drift)",
+    "finds stale commands, paths and versions in AGENTS.md and CLAUDE.md files."
+  ],
+  [
+    "zovo.skill-shelf",
+    "Agent Skills & Claude Skills (Skill Shelf)",
+    "lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load."
   ],
   [
     "zovo.agent-session-viewer",
-    "Agent Session Viewer",
-    "browses and searches your local Claude Code and Codex sessions.",
-    "https://github.com/theluckystrike/agent-session-viewer"
+    "Claude Code History & Codex History Viewer",
+    "browses and searches your local Claude Code and Codex sessions."
   ],
+  [
+    "zovo.ai-usage-meter",
+    "Claude Code Usage & Codex Usage Cost Meter",
+    "shows Claude Code and Codex tokens and estimated cost from your local session files."
+  ]
+];
+const QUEUED = [
   [
     "zovo.audio-preview-vscode",
     "Audio Preview & Loudness Meter",
@@ -87,40 +104,64 @@ const QUEUED = [
     "https://github.com/theluckystrike/audio-preview-vscode"
   ],
   [
-    "zovo.video-preview-with-sound",
-    "Video Preview with Sound",
-    "plays MP4, MOV, MKV and WebM files with their sound.",
-    "https://github.com/theluckystrike/video-preview-vscode"
-  ],
-  [
-    "zovo.graphviz-preview",
+    "zovo.zovo-graphviz-preview",
     "Graphviz Preview & DOT Viewer",
     "shows a live preview of DOT files and exports SVG or PNG.",
     "https://github.com/theluckystrike/graphviz-preview-vscode"
   ],
   [
     "zovo.tiff-viewer",
-    "TIFF Viewer",
+    "TIFF Viewer (16-bit, Float, GeoTIFF)",
     "opens 16-bit, float, multi-page and GeoTIFF images.",
     "https://github.com/theluckystrike/tiff-viewer-vscode"
   ],
   [
     "zovo.arrow-avro-viewer",
-    "Avro, Arrow & Feather Viewer",
+    "Avro Viewer, Arrow Viewer & Feather Viewer",
     "opens Avro, Arrow and Feather files as a paged table.",
     "https://github.com/theluckystrike/arrow-avro-viewer-vscode"
   ],
   [
     "zovo.eml-viewer",
-    "EML & MBOX Email Viewer",
-    "reads email files with remote images blocked.",
+    "EML Viewer & MBOX Email Viewer",
+    "reads EML, EMLX and MBOX email files with remote images blocked.",
     "https://github.com/theluckystrike/eml-viewer-vscode"
   ],
   [
     "zovo.3d-model-viewer",
-    "3D Model Viewer",
+    "3D Model Viewer (GLB, glTF, STL, OBJ, PLY)",
     "views GLB, glTF, STL, OBJ, PLY and 3MF models.",
     "https://github.com/theluckystrike/model-viewer-vscode"
+  ],
+  [
+    "zovo.zovo-pickle-viewer",
+    "PKL Viewer & Pickle Viewer",
+    "opens Python pickle files without Python and never runs their code.",
+    "https://github.com/theluckystrike/pickle-viewer-vscode"
+  ],
+  [
+    "zovo.dicom-nifti-viewer",
+    "DICOM Viewer & NIfTI Viewer for CT and MRI",
+    "opens CT and MRI scans, DICOM folders and NIfTI volumes with window presets and three views.",
+    "https://github.com/theluckystrike/dicom-nifti-viewer-vscode"
+  ],
+  [
+    "zovo.zip-archive-explorer",
+    "ZIP Viewer & Archive Explorer (JAR, TAR, GZ)",
+    "browses ZIP, JAR, VSIX, TAR and GZ files, opens entries in tabs and extracts them safely.",
+    "https://github.com/theluckystrike/archive-explorer-vscode"
+  ],
+  [
+    "zovo.zovo-gcode-viewer",
+    "GCode Viewer & 3D Print Preview",
+    "shows GCode toolpaths in 3D layer by layer, with print time and filament use.",
+    "https://github.com/theluckystrike/gcode-viewer-vscode"
+  ],
+  [
+    "zovo.zovo-epub-reader",
+    "EPUB Reader & EPUB Viewer",
+    "reads EPUB books with a table of contents, search and light, sepia or dark themes.",
+    "https://github.com/theluckystrike/epub-reader-vscode"
   ],
   [
     "zovo.zovo-file-viewers",
@@ -128,6 +169,64 @@ const QUEUED = [
     "installs the PDF, table, Word, PowerPoint, HDF5 and tensor viewers in one step.",
     "https://github.com/theluckystrike/zovo-file-viewers"
   ]
+];
+
+// [id, id, weight]. Products that people use together. The list for one product shows its closest pairs first
+// (live ones before queued ones). Weights come from how often rival listings name both formats (out/I2.md
+// section 4), plus a few judgment pairs for products that study did not cover. Pairs only change the order.
+const PAIRS = [
+  ["zovo.docx-viewer-vscode", "zovo.pptx-slide-viewer", 0.284],
+  ["zovo.docx-viewer-vscode", "zovo.pdf-viewer-dark", 0.24],
+  ["zovo.agent-session-viewer", "zovo.ai-usage-meter", 0.236],
+  ["zovo.zovo-json-tree-viewer", "zovo.zovo-jsonl-viewer", 0.228],
+  ["zovo.zovo-json-tree-viewer", "zovo.table-viewer-vscode", 0.216],
+  ["zovo.hdf5-netcdf-explorer", "zovo.tensor-viewer", 0.208],
+  ["zovo.docx-viewer-vscode", "zovo.table-viewer-vscode", 0.197],
+  ["zovo.pptx-slide-viewer", "zovo.table-viewer-vscode", 0.18],
+  ["zovo.pdf-viewer-dark", "zovo.table-viewer-vscode", 0.152],
+  ["zovo.sqlite-table-viewer", "zovo.table-viewer-vscode", 0.15],
+  ["zovo.zovo-jsonl-viewer", "zovo.table-viewer-vscode", 0.14],
+  ["zovo.pdf-viewer-dark", "zovo.pptx-slide-viewer", 0.129],
+  ["zovo.context-drift", "zovo.skill-shelf", 0.129],
+  ["zovo.zovo-json-tree-viewer", "zovo.sqlite-table-viewer", 0.111],
+  ["zovo.pdf-viewer-dark", "zovo.video-preview-with-sound", 0.056],
+  ["zovo.zovo-jsonl-viewer", "zovo.agent-session-viewer", 0.053],
+  ["zovo.skill-shelf", "zovo.ai-usage-meter", 0.046],
+  ["zovo.context-drift", "zovo.ai-usage-meter", 0.043],
+  ["zovo.zovo-jsonl-viewer", "zovo.sqlite-table-viewer", 0.04],
+  ["zovo.table-viewer-vscode", "zovo.tensor-viewer", 0.038],
+  ["zovo.agent-session-viewer", "zovo.skill-shelf", 0.037],
+  ["zovo.zovo-json-tree-viewer", "zovo.pdf-viewer-dark", 0.036],
+  ["zovo.agent-session-viewer", "zovo.table-viewer-vscode", 0.031],
+  ["zovo.zovo-json-tree-viewer", "zovo.ai-usage-meter", 0.029],
+  ["zovo.docx-viewer-vscode", "zovo.zovo-json-tree-viewer", 0.028],
+  ["zovo.context-drift", "zovo.agent-session-viewer", 0.028],
+  ["zovo.zovo-jsonl-viewer", "zovo.ai-usage-meter", 0.026],
+  ["zovo.zovo-json-tree-viewer", "zovo.agent-session-viewer", 0.025],
+  ["zovo.table-viewer-vscode", "zovo.video-preview-with-sound", 0.024],
+  ["zovo.agent-session-viewer", "zovo.sqlite-table-viewer", 0.024],
+  ["zovo.zovo-json-tree-viewer", "zovo.video-preview-with-sound", 0.021],
+  ["zovo.audio-preview-vscode", "zovo.video-preview-with-sound", 0.12],
+  ["zovo.arrow-avro-viewer", "zovo.table-viewer-vscode", 0.12],
+  ["zovo.zovo-pickle-viewer", "zovo.tensor-viewer", 0.12],
+  ["zovo.dicom-nifti-viewer", "zovo.tiff-viewer", 0.12],
+  ["zovo.zovo-gcode-viewer", "zovo.3d-model-viewer", 0.12],
+  ["zovo.dxf-viewer", "zovo.3d-model-viewer", 0.12],
+  ["zovo.dxf-viewer", "zovo.zovo-gcode-viewer", 0.12],
+  ["zovo.zovo-epub-reader", "zovo.pdf-viewer-dark", 0.12],
+  ["zovo.eml-viewer", "zovo.pdf-viewer-dark", 0.06],
+  ["zovo.eml-viewer", "zovo.docx-viewer-vscode", 0.06],
+  ["zovo.eml-viewer", "zovo.zip-archive-explorer", 0.06],
+  ["zovo.zovo-epub-reader", "zovo.docx-viewer-vscode", 0.06],
+  ["zovo.arrow-avro-viewer", "zovo.zovo-jsonl-viewer", 0.06],
+  ["zovo.arrow-avro-viewer", "zovo.sqlite-table-viewer", 0.06],
+  ["zovo.arrow-avro-viewer", "zovo.zovo-pickle-viewer", 0.06],
+  ["zovo.zovo-pickle-viewer", "zovo.table-viewer-vscode", 0.06],
+  ["zovo.zovo-pickle-viewer", "zovo.hdf5-netcdf-explorer", 0.06],
+  ["zovo.tiff-viewer", "zovo.hdf5-netcdf-explorer", 0.06],
+  ["zovo.dicom-nifti-viewer", "zovo.hdf5-netcdf-explorer", 0.06],
+  ["zovo.zovo-graphviz-preview", "zovo.zovo-json-tree-viewer", 0.06],
+  ["zovo.zip-archive-explorer", "zovo.table-viewer-vscode", 0.06]
 ];
 
 const SETTING = 'showSupportLinks';
@@ -146,12 +245,32 @@ function marketplaceUrl(id) {
   return `https://marketplace.visualstudio.com/items?itemName=${encodeURIComponent(id)}`;
 }
 
-/** Our other extensions, live ones first. selfId is left out. */
+/** How closely two products are used together. 0 when they are not a pair. */
+function pairWeight(a, b) {
+  const x = String(a || '').toLowerCase();
+  const y = String(b || '').toLowerCase();
+  let best = 0;
+  for (const [p, q, w] of PAIRS) {
+    if ((p === x && q === y) || (p === y && q === x)) best = Math.max(best, w);
+  }
+  return best;
+}
+
+/** Keeps the list order for products with the same weight. */
+function byPair(self, list) {
+  return list
+    .map((p, i) => ({ p, i, w: pairWeight(self, p.id) }))
+    .sort((a, b) => (b.w - a.w) || (a.i - b.i))
+    .map((x) => x.p);
+}
+
+/** Our other extensions. Live ones first, and in each group the closest pairs first. selfId is left out. */
 function otherProducts(selfId) {
   const self = String(selfId || '').toLowerCase();
-  const live = LIVE.map(([id, name, line]) => ({ id, name, line, live: true, url: marketplaceUrl(id) }));
-  const queued = QUEUED.map(([id, name, line, url]) => ({ id, name, line, live: false, url }));
-  return live.concat(queued).filter((p) => p.id.toLowerCase() !== self);
+  const notSelf = (p) => p.id.toLowerCase() !== self;
+  const live = LIVE.map(([id, name, line]) => ({ id, name, line, live: true, url: marketplaceUrl(id) })).filter(notSelf);
+  const queued = QUEUED.map(([id, name, line, url]) => ({ id, name, line, live: false, url })).filter(notSelf);
+  return byPair(self, live).concat(byPair(self, queued));
 }
 
 function sentence(line) {
@@ -282,7 +401,7 @@ function registerSupport(opts) {
 }
 
 module.exports = {
-  FUNDING, LIVE, QUEUED, SETTING, FOOTER_CSS,
-  fundingLinks, sponsorUrl, marketplaceUrl, otherProducts, pickItems, commandIds, commandUris,
+  FUNDING, LIVE, QUEUED, PAIRS, SETTING, FOOTER_CSS,
+  fundingLinks, sponsorUrl, marketplaceUrl, pairWeight, otherProducts, pickItems, commandIds, commandUris,
   footerHtml, footerMarkdown, showLinks, registerSupport,
 };

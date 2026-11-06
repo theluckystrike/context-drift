@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "AGENTS.md & CLAUDE.md Linter (Context Drift)",
   "description": "Context Drift lints AGENTS.md and CLAUDE.md files and finds stale commands, paths and versions that no longer match your repo, all offline.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",
