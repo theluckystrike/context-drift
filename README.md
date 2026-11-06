@@ -187,6 +187,7 @@ Quick fixes can replace a script, target or path with the suggestion, or replace
 | `contextDrift.gitStaleness` | `false` | Turn on CD006 (`git log`, read-only). Always off in untrusted workspaces. |
 | `contextDrift.staleDays` | `180` | CD006 age threshold, in days. |
 | `contextDrift.staleCommits` | `50` | CD006 commit threshold. |
+| `contextDrift.askForRating` | `true` | Ask one time for a Marketplace rating, after 5 checks and 2 days. Turn it off with `false` |
 
 ## CLI
 

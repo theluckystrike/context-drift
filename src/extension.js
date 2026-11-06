@@ -2,6 +2,10 @@
 const vscode = require('vscode');
 const path = require('path');
 const engine = require('./engine');
+const { createRatingPrompt } = require('./rate');
+
+let rating = { success() {} };
+const ratedFolders = new Set(); // one success per folder per session, for the rating prompt
 
 const SOURCE = 'context-drift';
 const DOCS = 'https://github.com/theluckystrike/context-drift#';
@@ -212,6 +216,7 @@ async function doRun(folder, st) {
   st.files = res.files.length;
   st.skipped = res.skipped.length;
   updateStatus();
+  if (res.files.length && !ratedFolders.has(folder.uri.toString())) { ratedFolders.add(folder.uri.toString()); rating.success(); }
   return res;
 }
 
@@ -378,6 +383,7 @@ async function hasInstructionFiles() {
 }
 
 function activate(context) {
+  rating = createRatingPrompt({ vscode, context, extensionId: 'zovo.context-drift', section: 'contextDrift', message: (n) => `Context Drift has checked your agent instruction files ${n} times for you. A rating helps other people find it.` });
   collection = vscode.languages.createDiagnosticCollection(SOURCE);
   statusItem = vscode.window.createStatusBarItem('contextDrift.status', vscode.StatusBarAlignment.Left, 20);
   statusItem.name = 'Context Drift';
