@@ -1,10 +1,10 @@
 # AGENTS.md & CLAUDE.md Linter (Context Drift)
 
-Context Drift finds the commands, paths and versions in your AGENTS.md, CLAUDE.md, Cursor and Copilot rules that no longer match your repo.
+For teams whose coding agents read AGENTS.md or CLAUDE.md, Context Drift flags the commands, paths and versions in those files that no longer match the repo.
 
-![A drawing of AGENTS.md with five findings underlined, and the same five findings printed by the CLI](images/demo.png)
+![AGENTS.md open in VS Code with squiggles under Node 18, pnpm, buidl, deploy and src/server/main.ts, and the Problems panel listing the 5 findings](https://raw.githubusercontent.com/theluckystrike/context-drift/main/images/vscode-agents-md.png)
 
-*Drawn from real output on [`test/fixtures/readme-example`](test/fixtures/readme-example). The editor half is a drawing made from the CLI's JSON output. The CLI half is its real text output.*
+*A real VS Code 1.142 window running Context Drift on [`test/fixtures/readme-example`](test/fixtures/readme-example), a 4 line AGENTS.md with 5 stale claims.*
 
 - Catch renamed scripts, moved files and the wrong package manager before your coding agent trips on them.
 - A quick fix replaces a wrong script, path or package manager in one click, and "Apply all" fixes the whole file.
@@ -14,6 +14,10 @@ Context Drift finds the commands, paths and versions in your AGENTS.md, CLAUDE.m
 
 1. Install Context Drift and open a folder that has an `AGENTS.md`, `CLAUDE.md` or other agent instruction file. Findings show up as squiggles and in the Problems panel.
 2. Put the cursor on a finding and press `Ctrl+.` (`Cmd+.` on macOS) to fix it.
+
+![Cmd+. on the misspelled script buidl opens the Quick Fix menu. A click on Apply all 3 Context Drift fixes in this file fixes buidl, pnpm and the moved path, and the Problems count drops from 5 to 2](https://raw.githubusercontent.com/theluckystrike/context-drift/main/images/demo-quick-fix.gif)
+
+*Recorded in the same window. The white arrow is drawn in to show where each click lands. The 2 findings left (a missing Makefile target and the Node version) have no one-click fix.*
 
 For a short tour, run "Context Drift: Get Started" from the Command Palette.
 
@@ -30,6 +34,10 @@ It's built for precision over recall. It skips text that reads as negated, histo
 ## Before / after
 
 `AGENTS.md` in a repo that moved from pnpm to npm, renamed its deploy target, moved `main.ts`, and upgraded Node. Below is the real output on [`test/fixtures/readme-example`](test/fixtures/readme-example).
+
+![A drawing of AGENTS.md with five findings underlined, and the same five findings printed by the CLI](images/demo.png)
+
+*Drawn from real output on [`test/fixtures/readme-example`](test/fixtures/readme-example). The editor half is a drawing made from the CLI's JSON output. The CLI half is its real text output.*
 
 ```markdown
 - Requires Node 18.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 (2026-11-06)
+
+- The Marketplace page now starts with a screenshot of a real VS Code window with AGENTS.md findings in the Problems panel, and a short GIF of "Apply all" fixing 3 of them. Both were made from generated sample files. The images load from the GitHub repo and are not packed into the extension, so the download size stays the same.
+
 ## 0.1.8 (2026-11-06)
 
 - The status bar tooltip ends with one small line with two links, "Sponsor" (GitHub Sponsors) and "More free viewers". The walkthrough gets a last step with the same two links. The new setting `contextDrift.showSupportLinks` (default `true`) hides both. There is no popup, and nothing is sent anywhere.
