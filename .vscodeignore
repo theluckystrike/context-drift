@@ -20,4 +20,5 @@ deletions-*.txt
 FIX*.md
 DONE*
 scratch*/**
-images/**
+images/vscode-*
+images/demo-*
