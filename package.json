@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "AGENTS.md & CLAUDE.md Linter (Context Drift)",
   "description": "Context Drift lints AGENTS.md and CLAUDE.md files and finds stale commands, paths and versions that no longer match your repo, all offline.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",
@@ -96,6 +96,16 @@
         "command": "contextDrift.openWalkthrough",
         "title": "Get Started",
         "category": "Context Drift"
+      },
+      {
+        "command": "contextDrift.supportDeveloper",
+        "title": "Support the developer",
+        "category": "Context Drift"
+      },
+      {
+        "command": "contextDrift.moreViewers",
+        "title": "More free viewers",
+        "category": "Context Drift"
       }
     ],
     "configuration": {
@@ -162,6 +172,11 @@
           "type": "boolean",
           "default": true,
           "description": "Ask one time for a Marketplace rating after you have used Context Drift for a few days. You can answer \"Later\" or \"Don't ask again\". Nothing is sent anywhere."
+        },
+        "contextDrift.showSupportLinks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Sponsor and More free viewers links in the status bar tooltip and as the last walkthrough step. Nothing is sent anywhere."
         }
       }
     },
@@ -215,6 +230,19 @@
             "completionEvents": [
               "onCommand:workbench.action.openSettings"
             ]
+          },
+          {
+            "id": "support",
+            "title": "Support Context Drift",
+            "description": "Context Drift is free, with no ads and no tracking. Sponsors pay for the time that goes into fixes and new rules.\n[Sponsor](command:contextDrift.supportDeveloper)\n[More free viewers](command:contextDrift.moreViewers)",
+            "media": {
+              "markdown": "walkthrough/support.md"
+            },
+            "when": "config.contextDrift.showSupportLinks",
+            "completionEvents": [
+              "onCommand:contextDrift.supportDeveloper",
+              "onCommand:contextDrift.moreViewers"
+            ]
           }
         ]
       }
@@ -224,5 +252,8 @@
     "test": "node --test",
     "lint:self": "node bin/context-drift.js .",
     "package": "npx -y @vscode/vsce@3 package --no-dependencies -o dist/"
+  },
+  "sponsor": {
+    "url": "https://github.com/sponsors/theluckystrike"
   }
 }

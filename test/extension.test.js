@@ -171,7 +171,10 @@ test('package.json: walkthrough steps point at files that ship and commands that
   assert.ok(pkg.keywords.length <= 30);
   const ids = new Set(pkg.contributes.commands.map((c) => c.command));
   const src = fs.readFileSync(path.join(pkgRoot, 'src', 'extension.js'), 'utf8');
-  for (const id of ids) assert.ok(src.includes(`'${id}'`), id + ' is registered');
+  // the two support commands are registered by registerSupport({ prefix: 'contextDrift' }) in src/support.js
+  const support = Object.values(require('../src/support').commandIds('contextDrift'));
+  assert.ok(src.includes("registerSupport({ vscode, context, prefix: 'contextDrift'"));
+  for (const id of ids) assert.ok(src.includes(`'${id}'`) || support.includes(id), id + ' is registered');
   const [wt] = pkg.contributes.walkthroughs;
   assert.equal(wt.id, 'contextDrift.start');
   assert.ok(src.includes(`#${wt.id}`));

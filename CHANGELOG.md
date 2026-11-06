@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 (2026-11-06)
+
+- The status bar tooltip ends with one small line with two links, "Sponsor" (GitHub Sponsors) and "More free viewers". The walkthrough gets a last step with the same two links. The new setting `contextDrift.showSupportLinks` (default `true`) hides both. There is no popup, and nothing is sent anywhere.
+- New commands "Context Drift: Support the developer" and "Context Drift: More free viewers". The second one lists the other Zovo extensions and installs only the one you pick. Ones that are not on the Marketplace yet open their GitHub page.
+- The listing gets a Sponsor button. The README has a short Support section and lists all Zovo extensions.
+
 ## 0.1.7 (2026-11-06)
 
 - Context Drift asks one time for a Marketplace rating. It counts each success (a check of your agent instruction files (one per folder per session)). After 5 of them, and no sooner than 2 days after the first, it shows a small message with "Rate it", "Later" and "Don't ask again". "Later" waits for 20 more, at most two more times. It never shows in your first session, more than once per session, when the window is not focused, or in a remote or untrusted workspace.

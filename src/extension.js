@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const path = require('path');
 const engine = require('./engine');
 const { createRatingPrompt } = require('./rate');
+const { registerSupport, commandIds, footerMarkdown, showLinks } = require('./support');
 
 let rating = { success() {} };
 const ratedFolders = new Set(); // one success per folder per session, for the rating prompt
@@ -234,15 +235,27 @@ function toDiagnostic(uri, folder, d) {
   return diag;
 }
 
+// The status bar tooltip ends with one small line: Sponsor and More free viewers (setting contextDrift.showSupportLinks).
+// Command links in it are limited to those two commands.
+function statusTooltip(text) {
+  if (!showLinks(vscode, 'contextDrift') || typeof vscode.MarkdownString !== 'function') return text;
+  const c = commandIds('contextDrift');
+  const md = new vscode.MarkdownString();
+  md.appendText(text);
+  md.appendMarkdown('\n\n' + footerMarkdown('contextDrift'));
+  md.isTrusted = { enabledCommands: [c.sponsor, c.more] };
+  return md;
+}
+
 function updateStatus() {
   let count = 0, infos = 0, files = 0, skipped = 0, timedOut = false;
   for (const st of folderState.values()) { count += st.count || 0; infos += st.infos || 0; files += st.files || 0; skipped += st.skipped || 0; timedOut = timedOut || st.timedOut; }
   if (!files && !timedOut) { statusItem.hide(); return; }
   statusItem.text = timedOut ? '$(clock) Drift: timed out' : count ? `$(warning) Drift: ${count}` : '$(check) Drift: 0';
-  statusItem.tooltip = timedOut
+  statusItem.tooltip = statusTooltip(timedOut
     ? 'Context Drift: the check took longer than 30 s and was stopped. Click to try again.'
     : `Context Drift: ${count} problem(s) and ${infos} note(s) in ${files} agent instruction file(s)` +
-      (skipped ? `; ${skipped} file(s) not fully checked (too large, long lines or outside the workspace)` : '') + '. Click to re-check the workspace.';
+      (skipped ? `; ${skipped} file(s) not fully checked (too large, long lines or outside the workspace)` : '') + '. Click to re-check the workspace.');
   statusItem.show();
 }
 
@@ -384,6 +397,7 @@ async function hasInstructionFiles() {
 
 function activate(context) {
   rating = createRatingPrompt({ vscode, context, extensionId: 'zovo.context-drift', section: 'contextDrift', message: (n) => `Context Drift has checked your agent instruction files ${n} times for you. A rating helps other people find it.` });
+  registerSupport({ vscode, context, prefix: 'contextDrift', selfId: 'zovo.context-drift' });
   collection = vscode.languages.createDiagnosticCollection(SOURCE);
   statusItem = vscode.window.createStatusBarItem('contextDrift.status', vscode.StatusBarAlignment.Left, 20);
   statusItem.name = 'Context Drift';

@@ -86,7 +86,7 @@ It skips negated or historical text. The words *no, not, never, don't, avoid, in
 - After the comma that ends an opening *instead of, unlike, rather than* phrase. In "Instead of `npm run old`, use `npm run new`" and "Unlike `npm run old`, `npm run full` runs everything" the second command is checked.
 - After *and*, when three or more words follow it, or when an imperative follows four or more words. "Do not push to main and run `npm run lint` before merging" is checked, "Never build and run `X`" isn't.
 
-A negation followed by *without, forget, fail to, skip, omit, ignore* is a requirement only when that word governs the command directly: "Never commit without running `npm run lint`", "Don't forget to run `npm run typecheck`" and "Do not skip `npm run typecheck`" are checked. In "Do not skip tests by calling `npm run skip-tests`" the command is the forbidden means, so it stays skipped. Words after the command ("is deprecated", "(removed)", "no longer works") count only when the command is their subject.
+A negation followed by *without, forget, fail to, skip, omit, ignore* is a requirement only when that word governs the command directly. So "Never commit without running `npm run lint`", "Don't forget to run `npm run typecheck`" and "Do not skip `npm run typecheck`" are checked. In "Do not skip tests by calling `npm run skip-tests`" the command is the forbidden means, so it stays skipped. Words after the command ("is deprecated", "(removed)", "no longer works") count only when the command is their subject.
 
 These are word rules, not a grammar. Unusual sentences can still be misread, in either direction.
 
@@ -114,7 +114,7 @@ Text that names, creates, generates or stores a file rather than claiming it exi
 
 - In a sparse checkout, a missing path is reported only when `git ls-files` confirms it isn't in the repo. Without git, missing paths aren't reported there.
 - If the folder isn't a git repository root, has no manifest, and most referenced paths are missing, it reports one info "Not a project root" instead of a list of missing paths. That's the usual case for an instruction file copied somewhere else.
-- In `SKILL.md` it checks only the skill's own bundle: links and `scripts/`, `references/`, `assets/` and similar paths, resolved against the skill folder and the plugin root.
+- In `SKILL.md` it checks only the skill's own bundle, which means links and `scripts/`, `references/`, `assets/` and similar paths, resolved against the skill folder and the plugin root.
 
 ### CD003 package-manager drift
 Reported as a warning.
@@ -131,13 +131,13 @@ Reported as a warning.
 - In prose, "Node" must be capitalized (or written `Node.js`, `nodejs`, "node version"), so "node 7 of the cluster" isn't a version claim.
 - A package-level instruction file is compared with its nearest `package.json`, not with the workspace root.
 - It understands ranges (`>=18 <21`, `^20`, `~=3.11`) and version matrices ("Node 18, 20 and 22").
-- Historical, feature and CI text is ignored: "dropped Python 3.8", "added in Go 1.23", "Node 18 is too old", "CI runs Python 3.14".
+- Historical, feature and CI text is ignored, such as "dropped Python 3.8", "added in Go 1.23", "Node 18 is too old", "CI runs Python 3.14".
 
 ### CD005 cross-file conflict
 Reported as info.
 
 - `AGENTS.md` says `make test` and `CLAUDE.md` says `npm test`.
-- Two instruction files in the same scope give different commands for the same verb: test, build, lint, format, dev or typecheck.
+- Two instruction files in the same scope give different commands for the same verb, such as test, build, lint, format, dev or typecheck.
 - Files in subfolders are a separate scope, and commands that run in different folders (`npm test` vs `cd api && pytest`) don't conflict.
 
 ### CD006 stale file
@@ -248,12 +248,12 @@ Tests time the adversarial inputs from both independent reviews at about 1 MB. T
 
 ## Precision
 
-Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository). 0.1.2 gives exactly the same warnings and errors on the 184 local folders below (re-run on 2026-11-05: none added, none removed). We compared 0.1.3 with 0.1.2 on the same 184 folders (2026-11-05) and got the same 264 findings, none added, none removed.
+Measured for 0.1.1 on the same material as the independent review of 0.1.0 (details in `NOTES.md` in the repository). 0.1.2 gives exactly the same warnings and errors on the 184 local folders below (re-run on 2026-11-05, none added, none removed). We compared 0.1.3 with 0.1.2 on the same 184 folders (2026-11-05) and got the same 264 findings, none added, none removed.
 
-- Real source repositories from the review (a webdriverio checkout, promptbook, a small CLI repo): 4 findings, all true. 0.1.0 reported 4 true and 14 false findings there.
+- Real source repositories from the review (a webdriverio checkout, promptbook, a small CLI repo) gave 4 findings, all true. 0.1.0 reported 4 true and 14 false findings there.
 - 184 local folders with 3,629 instruction files (git off, as in the review). Overall, about 1 finding in 10 is false. CD001 gave 6 findings, 1 false (0.1.0 gave 31 findings, 26 false). CD004 gave 3 findings, none false (0.1.0 gave 8, 5 false). CD005 gave none (0.1.0 gave 4, all false). CD002 gave 224 warnings (0.1.0 gave 921). In a random sample of 40, 4 were false. Another 21 are technically true, but they sit in folders that hold a copy of an instruction file without the source.
-- All 48 adversarial cases from the review pass (0.1.0: 24 false positives, 1 false negative).
-- Of the 53 cases of the second review (0.1.1), 50 pass (0.1.1 passed 42). Of its 17 recall cases, 0.1.2 reports the expected finding in all 17 (0.1.1: 10). The three cases that don't match are known. They're `.gitignore` negation (not modeled), a span with terminal control characters (not read as a command), and one case where the review's own expectation was wrong ("Go 1.20 or newer" against `go 1.22` is true drift and is reported). These cases are regression tests in `test/review-r2.test.js`.
+- All 48 adversarial cases from the review pass. 0.1.0 had 24 false positives and 1 false negative.
+- Of the 53 cases of the second review (0.1.1), 50 pass (0.1.1 passed 42). Of its 17 recall cases, 0.1.2 reports the expected finding in all 17, where 0.1.1 found 10. The three cases that don't match are known. They're `.gitignore` negation (not modeled), a span with terminal control characters (not read as a command), and one case where the review's own expectation was wrong ("Go 1.20 or newer" against `go 1.22` is true drift and is reported). These cases are regression tests in `test/review-r2.test.js`.
 - Of the 51 cases of the third review (0.1.2), 0.1.3 passes 42 (0.1.2 passed 34). The 9 that don't match are known false negatives, and none of them is a false finding. `npm run foo`/`bar` are placeholders and never checked (the same sentence with real names passes). *add, write, may* anywhere in a sentence still hide a path (3 cases, precision first). Include/import cycles in Makefile, justfile and Taskfile (3 cases) and `"scripts": null` report nothing, and a `make` target with control characters isn't read as a target. These cases are regression tests in `test/review-r3.test.js`.
 
 ## Privacy
@@ -264,12 +264,30 @@ Context Drift runs locally. It makes no network requests and has no telemetry. I
 
 MIT © 2026 Zovo
 
+## Support
+
+Zovo extensions have no ads and no tracking, and sponsors pay for the time that goes into fixes and new viewers. You can sponsor the work on [GitHub Sponsors](https://github.com/sponsors/theluckystrike).
+
 ## More viewers by Zovo
 
-- [PDF Viewer & Reader with Dark Mode](https://marketplace.visualstudio.com/items?itemName=zovo.pdf-viewer-dark) reads PDFs with a dark mode, search, an outline and thumbnails.
+- [PDF Viewer & Reader with Dark Mode](https://marketplace.visualstudio.com/items?itemName=zovo.pdf-viewer-dark) reads PDFs with a real dark mode, search, an outline and thumbnails.
 - [CSV, Excel & Parquet Viewer](https://marketplace.visualstudio.com/items?itemName=zovo.table-viewer-vscode) opens Parquet, Excel and CSV files as a sortable, filterable table.
 - [DOCX Viewer & Word Viewer](https://marketplace.visualstudio.com/items?itemName=zovo.docx-viewer-vscode) previews Word files with dark mode, an outline and search.
 - [HDF5 & NetCDF Explorer](https://marketplace.visualstudio.com/items?itemName=zovo.hdf5-netcdf-explorer) browses groups, variables and attributes in scientific data files.
 - [PPTX Viewer for PowerPoint](https://marketplace.visualstudio.com/items?itemName=zovo.pptx-slide-viewer) shows PowerPoint slides, thumbnails and speaker notes.
 - [Skill Shelf](https://marketplace.visualstudio.com/items?itemName=zovo.skill-shelf) lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load.
 - [Tensor Viewer](https://marketplace.visualstudio.com/items?itemName=zovo.tensor-viewer) shows NPY, NPZ, Safetensors and GGUF tensors with stats and heatmaps.
+
+Coming soon to the Marketplace, with the code on GitHub now.
+
+- [JSONL Viewer](https://github.com/theluckystrike/jsonl-viewer-vscode) opens JSONL and NDJSON files as a table, as records or as a chat view.
+- [SQLite Table Viewer](https://github.com/theluckystrike/sqlite-table-viewer) browses SQLite tables read-only and runs SELECT queries.
+- [Agent Session Viewer](https://github.com/theluckystrike/agent-session-viewer) browses and searches your local Claude Code and Codex sessions.
+- [Audio Preview & Loudness Meter](https://github.com/theluckystrike/audio-preview-vscode) plays audio files with a waveform, a spectrogram and LUFS loudness.
+- [Video Preview with Sound](https://github.com/theluckystrike/video-preview-vscode) plays MP4, MOV, MKV and WebM files with their sound.
+- [Graphviz Preview & DOT Viewer](https://github.com/theluckystrike/graphviz-preview-vscode) shows a live preview of DOT files and exports SVG or PNG.
+- [TIFF Viewer](https://github.com/theluckystrike/tiff-viewer-vscode) opens 16-bit, float, multi-page and GeoTIFF images.
+- [Avro, Arrow & Feather Viewer](https://github.com/theluckystrike/arrow-avro-viewer-vscode) opens Avro, Arrow and Feather files as a paged table.
+- [EML & MBOX Email Viewer](https://github.com/theluckystrike/eml-viewer-vscode) reads email files with remote images blocked.
+- [3D Model Viewer](https://github.com/theluckystrike/model-viewer-vscode) views GLB, glTF, STL, OBJ, PLY and 3MF models.
+- [File Viewers Pack](https://github.com/theluckystrike/zovo-file-viewers) installs the PDF, table, Word, PowerPoint, HDF5 and tensor viewers in one step.

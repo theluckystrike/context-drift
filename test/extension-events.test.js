@@ -218,3 +218,37 @@ test('extension: a check dropped by a worker restart runs again; the budget time
     assert.deepEqual(timerAtSend, [null], 'no budget timer while the request is queued');
   } finally { s.done(); }
 });
+
+// ---------- support links (Sponsor, More free viewers) ----------
+test('support: package.json has the sponsor field, the two commands, the setting and the walkthrough step', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  const support = require('../src/support');
+  assert.equal(pkg.sponsor.url, 'https://github.com/sponsors/theluckystrike');
+  assert.equal(pkg.sponsor.url, support.sponsorUrl());
+  const ids = pkg.contributes.commands.map((c) => c.command);
+  assert.ok(ids.includes('contextDrift.supportDeveloper') && ids.includes('contextDrift.moreViewers'));
+  assert.equal(pkg.contributes.configuration.properties['contextDrift.showSupportLinks'].default, true);
+  const step = pkg.contributes.walkthroughs[0].steps.find((s) => s.id === 'support');
+  assert.equal(step.when, 'config.contextDrift.showSupportLinks');
+  assert.ok(support.otherProducts('zovo.context-drift').every((p) => p.id !== 'zovo.context-drift'));
+});
+
+test('support: the status bar tooltip ends with Sponsor links by default, contextDrift.showSupportLinks=false hides them', async () => {
+  class MarkdownString { constructor() { this.value = ''; } appendText(t) { this.value += t; return this; } appendMarkdown(t) { this.value += t; return this; } }
+  for (const [settings, shown] of [[{ useGit: false }, true], [{ useGit: false, showSupportLinks: false }, false]]) {
+    const r = tempRepo(FILES);
+    const m = makeVscode(r.dir, settings);
+    m.vscode.MarkdownString = MarkdownString;
+    const ext = loadExtension(m.vscode);
+    ext.activate({ subscriptions: [] });
+    try {
+      await waitFor(() => m.status.shown);
+      const tip = m.status.tooltip;
+      const text = typeof tip === 'string' ? tip : tip.value;
+      assert.match(text, /Context Drift/);
+      assert.equal(text.includes('command:contextDrift.supportDeveloper'), shown, JSON.stringify(settings));
+      if (shown) assert.deepEqual(tip.isTrusted, { enabledCommands: ['contextDrift.supportDeveloper', 'contextDrift.moreViewers'] });
+      assert.ok(m.commands.has('contextDrift.supportDeveloper') && m.commands.has('contextDrift.moreViewers'));
+    } finally { ext.deactivate(); r.cleanup(); }
+  }
+});
