@@ -7,8 +7,13 @@ For teams whose coding agents read AGENTS.md or CLAUDE.md, Context Drift flags t
 *A real VS Code 1.142 window running Context Drift on [`test/fixtures/readme-example`](test/fixtures/readme-example), a 4 line AGENTS.md with 5 stale claims.*
 
 - Catch renamed scripts, moved files and the wrong package manager before your coding agent trips on them.
+- Find `@imports` in CLAUDE.md and GEMINI.md that point to missing files, and AGENTS.md files too big for Codex's 32 KiB limit. Both tools skip that text without a warning.
 - A quick fix replaces a wrong script, path or package manager in one click, and "Apply all" fixes the whole file.
 - It runs locally with no network and no account, and the same check runs in CI.
+
+![CLAUDE.md in VS Code with two @imports underlined. Cmd+. on @docs/stlye.md offers Replace with "@docs/style.md". The Problems panel also lists a missing npm script in .claude/rules/e2e.md and a 43.5 KiB AGENTS.md over the Codex limit](https://raw.githubusercontent.com/theluckystrike/context-drift/main/images/vscode-claude-md-imports.png)
+
+*Real VS Code 1.142 window on a generated sample repo: two broken `@imports` in CLAUDE.md (CD007), a missing script in a `.claude/rules` file (CD001) and an AGENTS.md over Codex's 32 KiB limit (CD008).*
 
 ## Quick start
 
@@ -27,7 +32,7 @@ Agent instruction files state facts about your repo, like which commands to run,
 
 Context Drift compares what your instruction files say with what is actually in the repo. It shows each mismatch in the editor, with the exact range and a quick fix where one is cheap.
 
-It reads `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules/**/*.mdc`, `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `.windsurfrules`, `.windsurf/rules/**/*.md`, `.clinerules` (file or folder), and `SKILL.md`.
+It reads `AGENTS.md`, `AGENTS.override.md` (Codex), `AGENTS.local.md` and `AGENT.md`, `CLAUDE.md`, `CLAUDE.local.md`, `.claude/rules/**/*.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules/**/*.mdc`, `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `.windsurfrules`, `.windsurf/rules/**/*.md`, `.devin/rules/**/*.md`, `.kiro/steering/**/*.md`, `.clinerules` (file or folder), and `SKILL.md`.
 
 It's built for precision over recall. It skips text that reads as negated, historical, hypothetical or an example, and paths it can't check, so it misses some real drift. On the repositories we measured, about 9 in 10 reported findings were true (see [Precision](#precision)). We haven't measured recall on real files.
 
@@ -155,6 +160,24 @@ Reported as info, and off by default.
 - The instruction file's last commit is older than 180 days, and the repo has 50 or more commits since then.
 - It uses `git log`, read-only, with a 3 s timeout per call. It's skipped silently when there's no git and in untrusted workspaces.
 
+### CD007 import drift
+Reported as a warning.
+
+- Claude Code loads `@path` lines in `CLAUDE.md` and `CLAUDE.local.md` as imports, and Gemini CLI does the same in `GEMINI.md`. The path is relative to the file that imports it.
+- When the file isn't there, both tools skip the import without a warning, so the agent never sees those instructions. A common case is `@AGENTS.md` or `@docs/testing.md` after a rename.
+- A quick fix offers the one file in the repo with the same name, or a close spelling in the same folder.
+- It only checks tokens that look like files: an extension such as `.md` or `.json`, or a leading `./` or `../`. Handles (`@alice`), scoped packages (`@types/node`), email addresses, `@~/` and absolute paths, globs, code spans, code blocks and gitignored files are left alone.
+
+### CD008 Codex size limit
+Reported as a warning.
+
+- Codex reads at most 32 KiB of `AGENTS.md` text by default (`project_doc_max_bytes`) and stops adding instructions at that size.
+- An `AGENTS.md` or `AGENTS.override.md` over 32 KiB gets one finding on the line where Codex stops, with the file size and how much is cut.
+- Raise `project_doc_max_bytes` in `~/.codex/config.toml`, or move parts into `AGENTS.md` files in subfolders, which Codex reads only when it works there.
+- It checks one file at a time. Codex also counts the `AGENTS.md` files above the current folder toward the same 32 KiB, so a smaller file can still be cut.
+
+![A 43.5 KiB services/billing/AGENTS.md open at line 314, where the CD008 finding in the Problems panel says Codex stops reading](https://raw.githubusercontent.com/theluckystrike/context-drift/main/images/vscode-codex-size-limit.png)
+
 ### Suppressing a finding
 
 ```markdown
@@ -278,7 +301,7 @@ Zovo extensions have no ads and no tracking, and sponsors pay for the time that 
 
 ## More viewers by Zovo
 
-- [Agent Skills & Claude Skills (Skill Shelf)](https://marketplace.visualstudio.com/items?itemName=zovo.skill-shelf) lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load.
+- [Agent Skills & Claude Skills Manager (Skill Shelf)](https://marketplace.visualstudio.com/items?itemName=zovo.skill-shelf) lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load.
 - [Claude Code Usage & Codex Usage Cost Meter](https://marketplace.visualstudio.com/items?itemName=zovo.ai-usage-meter) shows Claude Code and Codex tokens and estimated cost from your local session files.
 - [Claude Code History & Codex History Viewer](https://marketplace.visualstudio.com/items?itemName=zovo.agent-session-viewer) browses and searches your local Claude Code and Codex sessions.
 - [PDF Viewer & PDF Reader with Dark Mode](https://marketplace.visualstudio.com/items?itemName=zovo.pdf-viewer-dark) reads PDFs with a real dark mode, search, an outline and thumbnails.

@@ -86,7 +86,7 @@ const LIVE = [
   ],
   [
     "zovo.skill-shelf",
-    "Agent Skills & Claude Skills (Skill Shelf)",
+    "Agent Skills & Claude Skills Manager (Skill Shelf)",
     "lists, checks and toggles the Agent Skills that Claude Code, Codex and Cursor load."
   ],
   [

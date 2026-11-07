@@ -12,10 +12,11 @@ const SOURCE = 'context-drift';
 const DOCS = 'https://github.com/theluckystrike/context-drift#';
 const RULE_ANCHOR = {
   CD001: 'cd001-command-drift', CD002: 'cd002-path-drift', CD003: 'cd003-package-manager-drift',
-  CD004: 'cd004-version-drift', CD005: 'cd005-cross-file-conflict', CD006: 'cd006-stale-file',
+  CD004: 'cd004-version-drift', CD005: 'cd005-cross-file-conflict', CD006: 'cd006-stale-file', CD007: 'cd007-import-drift',
+  CD008: 'cd008-codex-size-limit',
 };
 const MANIFEST_GLOB = '**/{package.json,Makefile,makefile,GNUmakefile,*.mk,justfile,Justfile,.justfile,Taskfile.yml,Taskfile.yaml,pyproject.toml,requirements*.txt,Cargo.toml,.cargo/config.toml,go.mod,.nvmrc,.node-version,.python-version,.tool-versions,runtime.txt,package-lock.json,npm-shrinkwrap.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb,.gitignore,.gitmodules}';
-const INSTRUCTION_GLOB = '**/{AGENTS.md,CLAUDE.md,CLAUDE.local.md,GEMINI.md,SKILL.md,.cursorrules,.windsurfrules,.clinerules,.github/copilot-instructions.md,.github/instructions/**/*.instructions.md,.cursor/rules/**/*.mdc,.clinerules/**/*.md,.windsurf/rules/**/*.md}';
+const INSTRUCTION_GLOB = '**/{AGENTS.md,AGENTS.override.md,AGENTS.local.md,AGENT.md,CLAUDE.md,CLAUDE.local.md,GEMINI.md,SKILL.md,.cursorrules,.windsurfrules,.clinerules,.github/copilot-instructions.md,.github/instructions/**/*.instructions.md,.cursor/rules/**/*.mdc,.clinerules/**/*.md,.windsurf/rules/**/*.md,.claude/rules/**/*.md,.devin/rules/**/*.md,.kiro/steering/**/*.md}';
 const MANIFEST_BASENAME = /^(?:package\.json|[Mm]akefile|GNUmakefile|.*\.mk|[Jj]ustfile|\.justfile|[Tt]askfile(?:\.dist)?\.ya?ml|pyproject\.toml|requirements.*\.(?:txt|in)|Cargo\.toml|config\.toml|go\.mod|\.nvmrc|\.node-version|\.python-version|\.tool-versions|runtime\.txt|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|yarn\.lock|bun\.lockb?|\.gitignore|\.gitmodules)$/;
 const DEBOUNCE_MS = 500;
 const FS_DEBOUNCE_MS = 2000;

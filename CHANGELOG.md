@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 (2026-11-07)
+
+- New rule CD007 (import drift). An `@path` import in `CLAUDE.md`, `CLAUDE.local.md` or `GEMINI.md` that points to a missing file is a warning. Claude Code and Gemini CLI skip a missing import without a warning, so those instructions never load. A quick fix offers the file with the same name when the repo has exactly one.
+- New rule CD008 (Codex size limit). An `AGENTS.md` or `AGENTS.override.md` over 32 KiB is a warning on the line where Codex stops reading (`project_doc_max_bytes`).
+- Context Drift now also checks `AGENTS.override.md` (Codex), `AGENTS.local.md` and `AGENT.md`, `.claude/rules/**/*.md` (Claude Code), `.devin/rules/**/*.md` (Devin Desktop, formerly Windsurf) and `.kiro/steering/**/*.md` (Kiro).
+- Both new rules can be turned off with `contextDrift.ignoreRules`, `--ignore` or a disable comment, like the others.
+
 ## 0.1.11 (2026-11-07)
 
 - The support line in the hover has a "Rate" link next to Sponsor and More free viewers. It opens the review page of this extension on the Marketplace. Nothing pops up and nothing asks you for a rating.

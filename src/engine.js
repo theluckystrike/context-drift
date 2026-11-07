@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.1.5';
+const VERSION = '0.2.0';
 
 const RULES = {
   CD001: { id: 'CD001', name: 'command-drift', defaultSeverity: 'error', description: 'A documented command does not exist in the repo. Error for `npm run X`, `pnpm run X` and `make X` checked against the manifest at the right level; warning for every heuristic form (bare `pnpm X`, `yarn X`, `npm test`, just, task, cargo, uv/poetry).' },
@@ -18,6 +18,8 @@ const RULES = {
   CD003: { id: 'CD003', name: 'package-manager-drift', defaultSeverity: 'warning', description: 'The file uses one package manager but the lockfile / packageManager field says another.' },
   CD004: { id: 'CD004', name: 'version-drift', defaultSeverity: 'warning', description: 'A Node/Python/Go version claim contradicts .nvmrc, .node-version, engines, .python-version, requires-python or go.mod.' },
   CD005: { id: 'CD005', name: 'cross-file-conflict', defaultSeverity: 'info', description: 'Two instruction files in the same scope give different commands for the same verb (test/build/lint/format/dev/typecheck).' },
+  CD007: { id: 'CD007', name: 'import-drift', defaultSeverity: 'warning', description: 'An @path import in CLAUDE.md, CLAUDE.local.md or GEMINI.md points to a file that does not exist. Claude Code and Gemini CLI skip a missing import without a warning.' },
+  CD008: { id: 'CD008', name: 'codex-size-limit', defaultSeverity: 'warning', description: 'AGENTS.md or AGENTS.override.md is larger than 32 KiB, the default project_doc_max_bytes of Codex. Codex stops loading instructions at that size, so the rest of the file never reaches it.' },
   CD006: { id: 'CD006', name: 'stale-file', defaultSeverity: 'info', description: 'The instruction file has not changed for a long time while the repo kept moving. Off by default (CLI --stale, setting contextDrift.gitStaleness).' },
 };
 
@@ -49,6 +51,8 @@ const MAX_SPANS_PER_FILE = 20000;
 const INSTRUCTION_BASENAMES = new Set([
   'AGENTS.md', 'CLAUDE.md', 'CLAUDE.local.md', 'GEMINI.md', 'SKILL.md',
   '.cursorrules', '.windsurfrules', '.clinerules',
+  // Codex reads AGENTS.override.md before AGENTS.md; Devin Desktop (Windsurf) and Amp also read AGENTS.local.md and AGENT.md
+  'AGENTS.override.md', 'AGENTS.local.md', 'AGENT.md',
 ]);
 
 /** Returns a short kind string when rel (posix, relative) is an instruction file, else null. */
@@ -61,6 +65,9 @@ function classifyInstructionFile(rel) {
   if (/(^|\/)\.github\/instructions\/(?:[^/]+\/)*[^/]+\.instructions\.md$/.test(p)) return 'copilot-scoped';
   if (/(^|\/)\.clinerules\/(?:[^/]+\/)*[^/]+\.md$/.test(p)) return 'cline-rule';
   if (/(^|\/)\.windsurf\/rules\/(?:[^/]+\/)*[^/]+\.md$/.test(p)) return 'windsurf-rule';
+  if (/(^|\/)\.claude\/rules\/(?:[^/]+\/)*[^/]+\.md$/.test(p)) return 'claude-rule';
+  if (/(^|\/)\.devin\/rules\/(?:[^/]+\/)*[^/]+\.md$/.test(p)) return 'devin-rule';
+  if (/(^|\/)\.kiro\/steering\/(?:[^/]+\/)*[^/]+\.md$/.test(p)) return 'kiro-steering';
   return null;
 }
 
@@ -70,7 +77,7 @@ function scopeDirOf(rel) {
   // an AGENTS.md or CLAUDE.md inside .github/ is about that folder only (CI workflows)
   const kind = classifyInstructionFile(rel);
   if (kind && !INSTRUCTION_BASENAMES.has(kind)) {
-    const m = /^(.*?)(?:^|\/)(?:\.github|\.cursor|\.clinerules|\.windsurf)\//.exec(rel);
+    const m = /^(.*?)(?:^|\/)(?:\.github|\.cursor|\.clinerules|\.windsurf|\.claude|\.devin|\.kiro)\//.exec(rel);
     if (m) return m[1];
   }
   return posixDirname(rel);
@@ -1771,10 +1778,107 @@ function analyzeText(ctx, rel, text, opts) {
     }
   }
 
+  // ---- CD008 Codex size limit: one AGENTS.md over 32 KiB is cut off even before any other file is added
+  if (CODEX_KINDS.has(facts.kind) && Buffer.byteLength(text, 'utf8') > CODEX_MAX_BYTES) {
+    let bytes = 0;
+    let line = 0;
+    for (; line < doc.lines.length; line++) {
+      const next = bytes + Buffer.byteLength(doc.lines[line], 'utf8') + 1;
+      if (next > CODEX_MAX_BYTES) break;
+      bytes = next;
+    }
+    const total = Buffer.byteLength(text, 'utf8');
+    const kib = (total / 1024).toFixed(1);
+    const lineText = doc.lines[line] || '';
+    emit(mkDiag('CD008', 'warning', rel, line, 0, Math.max(1, lineText.length),
+      `This file is ${kib} KiB. Codex loads at most 32 KiB of AGENTS.md text by default (project_doc_max_bytes), so it stops near this line and never reads the last ${((total - CODEX_MAX_BYTES) / 1024).toFixed(1)} KiB. Raise project_doc_max_bytes in ~/.codex/config.toml or move parts into AGENTS.md files in subfolders.`,
+      { data: { kind: 'codex-size', bytes: total, limit: CODEX_MAX_BYTES } }));
+  }
+
+  // ---- CD007 import drift: "@path" imports (Claude Code memory imports, Gemini CLI memory import processor)
+  if (IMPORT_KINDS.has(facts.kind) && !stop()) {
+    const tool = facts.kind === 'GEMINI.md' ? 'Gemini CLI' : 'Claude Code';
+    for (const p of doc.prose) {
+      if (stop()) break;
+      if (!p.masked.includes('@')) continue;
+      IMPORT_RE.lastIndex = 0;
+      let m;
+      while ((m = IMPORT_RE.exec(p.masked))) {
+        const t = importTarget(m[2]);
+        if (!t) continue;
+        const col = m.index + m[1].length + 1;
+        checkImport(ctx, rel, instrDir, t, { line: p.line, col, endCol: col + t.shown.length }, tool, emitOnce);
+      }
+    }
+  }
+
   if (doc.longLines) facts.longLines = doc.longLines;
   if (doc.spansCapped) facts.spansCapped = true;
   if (capped) out.push(mkDiag('CD002', 'info', rel, 0, 0, Math.max(1, (doc.lines[0] || '').length), `Stopped after ${MAX_FINDINGS_PER_FILE} findings; the rest of this file was not checked.`, { data: { kind: 'capped' } }));
   return { diagnostics: out, facts };
+}
+
+/* ------------------------------------------------------------------ */
+/* CD007 import drift                                                  */
+/* ------------------------------------------------------------------ */
+/** Codex's default project_doc_max_bytes (32 KiB) and the files it applies to. */
+const CODEX_MAX_BYTES = 32 * 1024;
+const CODEX_KINDS = new Set(['AGENTS.md', 'AGENTS.override.md']);
+/** Files whose "@path" lines are imports: Claude Code (CLAUDE.md, CLAUDE.local.md) and Gemini CLI (GEMINI.md). */
+const IMPORT_KINDS = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'GEMINI.md']);
+/** "@" at line start or after white space, then the path up to the next white space ("\ " escapes a space). */
+const IMPORT_RE = /(^|\s)@((?:[^\s\\]|\\ )+)/g;
+/** Extensions that make "@name.ext" an import and not a handle, a decorator or a scoped npm package. */
+const IMPORT_EXTS = new Set(['md', 'mdc', 'mdx', 'markdown', 'txt', 'text', 'rst', 'adoc', 'org', 'json', 'jsonc', 'json5', 'yaml', 'yml',
+  'toml', 'ini', 'cfg', 'conf', 'xml', 'html', 'csv', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'py', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx',
+  'go', 'rs', 'rb', 'java', 'kt', 'swift', 'c', 'h', 'cc', 'cpp', 'hpp', 'cs', 'php', 'sql', 'graphql', 'gql', 'proto', 'prisma', 'tf', 'lock']);
+
+/** The path of an "@..." token when it reads as an import of a repo file, else null. */
+function importTarget(raw) {
+  // trailing sentence punctuation and Markdown emphasis are not part of the path
+  const shown = raw.replace(/[.,;:!?)\]}'"*_]+$/, '');
+  if (!shown || shown.length > 300) return null;
+  // home-folder and absolute imports differ per machine: not checkable from the repo
+  if (shown[0] === '~' || shown[0] === '/' || shown[0] === '\\' || /^[A-Za-z]:[\\/]/.test(shown)) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(shown)) return null; // URLs and other schemes
+  if (/[<>{}$*?|`[\]()]/.test(shown) || shown.includes('@')) return null; // placeholders, globs, links, a@b
+  const explicit = /^\.\.?\//.test(shown);
+  const ext = /\.([A-Za-z][A-Za-z0-9]{0,9})$/.exec(shown);
+  if (!explicit && !(ext && IMPORT_EXTS.has(ext[1].toLowerCase()))) return null;
+  return { shown, path: shown.replace(/\\ /g, ' '), explicit };
+}
+
+function checkImport(ctx, rel, instrDir, t, range, tool, emit) {
+  const target = normalizeRel(posixJoin(instrDir, t.path));
+  if (target === null || target === '') return; // leaves the root: cannot check
+  if (existsRel(ctx, target)) return;
+  const subs = submodulePaths(ctx);
+  if (subs.some((sp) => target === sp || target.startsWith(sp + '/'))) return;
+  // gitignored or generated files are per user or per build (CLAUDE.local.md, notes/): absent in a clean checkout by design
+  if (looksIgnoredOrGenerated(ctx, target)) return;
+  const name = target.slice(target.lastIndexOf('/') + 1);
+  const dir = posixDirname(target);
+  let suggestion = null;
+  const sameBase = (ctx.byBase.get(name) || []).filter((f) => !looksIgnoredOrGenerated(ctx, f));
+  if (sameBase.length === 1) suggestion = sameBase[0];
+  else if (!sameBase.length) {
+    const siblings = [];
+    for (const f of ctx.files) if (posixDirname(f) === dir) siblings.push(f.slice(f.lastIndexOf('/') + 1));
+    const near = closest(name, siblings);
+    if (near) suggestion = dir ? dir + '/' + near : near;
+  }
+  let fixText = null;
+  if (suggestion) {
+    fixText = relativeFrom(instrDir, suggestion, t.explicit);
+    if (/\s/.test(fixText)) fixText = null; // keep the quick fix simple: no escaped spaces
+  }
+  const msg = `Import "@${t.shown}" points to "${target}", which does not exist. ${tool} skips a missing import without a warning, so these instructions never load` +
+    (fixText ? `. Did you mean "@${fixText}"?` : '.');
+  const d = mkDiag('CD007', 'warning', rel, range.line, range.col, range.endCol, msg, {
+    data: { kind: 'import', path: t.path, resolved: target, parent: nearestExistingParent(ctx, target) },
+  });
+  if (fixText) d.fix = { title: `Replace with "@${fixText}"`, line: range.line, column: range.col, endLine: range.line, endColumn: range.endCol, newText: fixText };
+  emit(d);
 }
 
 /** "a/*.py,b/*.{ts,tsx}" -> ["a/*.py", "b/*.{ts,tsx}"]: commas inside braces belong to the glob. */
@@ -1954,7 +2058,7 @@ const BARE_NAMES = new Set(['Makefile', 'GNUmakefile', 'Dockerfile', 'Containerf
 const KNOWN_DOTFILES = new Set(['.nvmrc', '.node-version', '.python-version', '.tool-versions', '.editorconfig', '.prettierrc', '.eslintrc', '.npmrc', '.yarnrc', '.gitattributes', '.dockerignore', '.prettierignore', '.eslintignore', '.babelrc', '.swcrc', '.ruby-version', '.terraform-version', '.mise.toml', '.envrc', '.pre-commit-config.yaml', '.golangci.yml', '.golangci.yaml', '.markdownlint.json', '.lintstagedrc', '.czrc', '.releaserc', '.mocharc', '.c8rc', '.nycrc', '.stylelintrc', '.browserslistrc', '.huskyrc', '.commitlintrc']);
 const BUILD_OUTPUT_NAMES = new Set(['main.js', 'bundle.js', 'app.js', 'styles.css', 'output.css', 'main.css', 'index.css', 'bundle.css', 'manifest.json', 'data.json', 'sw.js', 'service-worker.js', 'worker.js', 'server.js', 'app.py', 'out.json', 'report.json', 'results.json', 'output.json', 'log.txt']);
 // generic names that instruction files mention as concepts, not as repo files
-const GENERIC_FILE_MENTIONS = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'AGENT.md', 'GEMINI.md', 'SKILL.md', '.cursorrules', '.windsurfrules', '.clinerules', 'copilot-instructions.md', 'settings.json', 'settings.local.json', 'llms.txt', 'llms-full.txt', 'MEMORY.md', 'mcp.json', '.mcp.json', 'config.toml', 'config.json', 'config.yaml', 'config.yml', 'index.html', 'index.js', 'index.ts', 'main.py', 'main.go', 'main.rs', 'lib.rs', 'mod.rs', '__init__.py', 'conftest.py', 'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'LICENSE.md', 'TODO.md', 'NOTES.md', 'PLAN.md', 'SPEC.md', 'STATUS.json', 'DONE', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'bun.lock', 'Cargo.lock', 'poetry.lock', 'uv.lock', 'go.sum', 'npm-shrinkwrap.json', 'bun.lockb', 'Gemfile.lock', 'composer.lock', 'Pipfile.lock', 'tsconfig.json', 'jsconfig.json', 'vite.config.ts', 'vite.config.js', 'next.config.js', 'next.config.mjs', 'next.config.ts', '.env', '.env.local', '.env.example', 'docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'compose.yml']);
+const GENERIC_FILE_MENTIONS = new Set(['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'AGENTS.override.md', 'AGENTS.local.md', 'AGENT.md', 'GEMINI.md', 'SKILL.md', '.cursorrules', '.windsurfrules', '.clinerules', 'copilot-instructions.md', 'settings.json', 'settings.local.json', 'llms.txt', 'llms-full.txt', 'MEMORY.md', 'mcp.json', '.mcp.json', 'config.toml', 'config.json', 'config.yaml', 'config.yml', 'index.html', 'index.js', 'index.ts', 'main.py', 'main.go', 'main.rs', 'lib.rs', 'mod.rs', '__init__.py', 'conftest.py', 'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'LICENSE.md', 'TODO.md', 'NOTES.md', 'PLAN.md', 'SPEC.md', 'STATUS.json', 'DONE', 'package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'bun.lock', 'Cargo.lock', 'poetry.lock', 'uv.lock', 'go.sum', 'npm-shrinkwrap.json', 'bun.lockb', 'Gemfile.lock', 'composer.lock', 'Pipfile.lock', 'tsconfig.json', 'jsconfig.json', 'vite.config.ts', 'vite.config.js', 'next.config.js', 'next.config.mjs', 'next.config.ts', '.env', '.env.local', '.env.example', 'docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'compose.yml']);
 
 function classifyPathCandidate(raw, isLink) {
   let p = raw.trim();
@@ -2020,7 +2124,7 @@ const SKILL_BUNDLE_PATH = /^\.?\/?(?:scripts|references|reference|assets|templat
 const RUNTIME_FILE = /(?:^|[-_.])(?:state|session|sessions|cache|history|receipts?|tokens?|auth|credentials?|secrets?|pid|queue|checkpoint|progress)(?:[-_.][\w-]*)?\.(?:json|jsonl|ya?ml|db|sqlite3?|log|lock|txt|toml|pid)$/i;
 
 /** Dot-folders that are committed to repos (a missing one is drift); other dot-folders are tool state. */
-const KNOWN_REPO_DOTDIRS = new Set(['.github', '.gitlab', '.vscode', '.cursor', '.husky', '.devcontainer', '.circleci', '.changeset', '.storybook', '.config', '.cargo', '.claude', '.agents', '.windsurf', '.clinerules', '.idea', '.gitea', '.forgejo', '.buildkite', '.azure-pipelines', '.yarn', '.mvn', '.ddev', '.docker', '.k8s', '.helm', '.zed']);
+const KNOWN_REPO_DOTDIRS = new Set(['.github', '.gitlab', '.vscode', '.cursor', '.devin', '.kiro', '.husky', '.devcontainer', '.circleci', '.changeset', '.storybook', '.config', '.cargo', '.claude', '.agents', '.windsurf', '.clinerules', '.idea', '.gitea', '.forgejo', '.buildkite', '.azure-pipelines', '.yarn', '.mvn', '.ddev', '.docker', '.k8s', '.helm', '.zed']);
 
 /** Paths of git submodules declared in .gitmodules files of the workspace. */
 function submodulePaths(ctx) {
@@ -2986,5 +3090,5 @@ module.exports = {
   safeText,
   safeLine,
   // exported for tests
-  _internal: { tokenizeShell, scanDocument, parseVer, satisfiesRange, claimFitsRange, compileGlob, globMatch, parseTomlLite, parseMakefile, parseJustfile, parseTaskfile, classifyPathCandidate, runGit, isGitignored },
+  _internal: { importTarget, tokenizeShell, scanDocument, parseVer, satisfiesRange, claimFitsRange, compileGlob, globMatch, parseTomlLite, parseMakefile, parseJustfile, parseTaskfile, classifyPathCandidate, runGit, isGitignored },
 };

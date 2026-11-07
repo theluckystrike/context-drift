@@ -5,8 +5,9 @@ const path = require('path');
 const engine = require('../src/engine');
 
 const HELP = `context-drift ${engine.VERSION}
-Find statements in AGENTS.md, CLAUDE.md, GEMINI.md, .cursorrules, Copilot and
-Cursor rules that no longer match the repository.
+Find statements in AGENTS.md, CLAUDE.md, GEMINI.md, .claude/rules, .cursorrules,
+Copilot, Cursor, Devin and Kiro rules that no longer match the repository, broken
+@imports in CLAUDE.md, and AGENTS.md files too large for Codex.
 
 Usage: context-drift [options] [path ...]
 
