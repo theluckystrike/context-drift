@@ -157,3 +157,15 @@ test('new instruction files: AGENTS.override.md, AGENTS.local.md, AGENT.md, .cla
   assert.deepEqual(tuples(r, '.devin/rules/style.md'), ['CD001 error 0:13-16']);
   assert.deepEqual(r.diagnostics.filter((d) => d.file === '.kiro/steering/tech.md').map((d) => d.ruleId), ['CD002']);
 });
+
+test('CD008: in a CRLF file each line ending counts 2 bytes, so the cut-off line matches the bytes Codex reads', () => {
+  const text = bigAgents(500).split('\n').join('\r\n');
+  const r = analyze({ 'AGENTS.md': text, 'package.json': '{"scripts":{"test":"x"}}' });
+  const [d] = r.diagnostics.filter((x) => x.ruleId === 'CD008');
+  assert.ok(d, 'reported');
+  const lines = text.split('\r\n');
+  const before = lines.slice(0, d.line).reduce((n, l) => n + Buffer.byteLength(l) + 2, 0);
+  assert.ok(before <= 32768 && before + Buffer.byteLength(lines[d.line]) + 2 > 32768, `line ${d.line}, ${before} bytes before it`);
+  const lf = analyze({ 'AGENTS.md': bigAgents(500), 'package.json': '{"scripts":{"test":"x"}}' }).diagnostics.find((x) => x.ruleId === 'CD008');
+  assert.ok(d.line < lf.line, 'CRLF cuts earlier than LF');
+});

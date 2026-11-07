@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
-const VERSION = '0.2.0';
+const VERSION = '0.2.2';
 
 const RULES = {
   CD001: { id: 'CD001', name: 'command-drift', defaultSeverity: 'error', description: 'A documented command does not exist in the repo. Error for `npm run X`, `pnpm run X` and `make X` checked against the manifest at the right level; warning for every heuristic form (bare `pnpm X`, `yarn X`, `npm test`, just, task, cargo, uv/poetry).' },
@@ -1780,10 +1780,12 @@ function analyzeText(ctx, rel, text, opts) {
 
   // ---- CD008 Codex size limit: one AGENTS.md over 32 KiB is cut off even before any other file is added
   if (CODEX_KINDS.has(facts.kind) && Buffer.byteLength(text, 'utf8') > CODEX_MAX_BYTES) {
+    // Count each line with its own line ending (CRLF is 2 bytes), so the cut-off line is right in Windows files too.
+    const parts = text.split(/(\r\n|\r|\n)/);
     let bytes = 0;
     let line = 0;
     for (; line < doc.lines.length; line++) {
-      const next = bytes + Buffer.byteLength(doc.lines[line], 'utf8') + 1;
+      const next = bytes + Buffer.byteLength(parts[2 * line] || '', 'utf8') + (parts[2 * line + 1] || '').length;
       if (next > CODEX_MAX_BYTES) break;
       bytes = next;
     }

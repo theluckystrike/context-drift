@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 (2026-11-07)
+
+- CD008 points at the right line in AGENTS.md files with Windows (CRLF) line endings. It counted 1 byte for each line ending instead of 2, so in a 39 KiB file it pointed about 25 lines too far down.
+- `context-drift --version` prints the current version again (it still said 0.2.0).
+
 ## 0.2.1 (2026-11-07)
 
 - "More free viewers" now starts with the Zovo extensions most related to this one. Picking one opens its Marketplace page, where you choose to install it.
