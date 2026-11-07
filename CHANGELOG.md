@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 (2026-11-07)
+
+- "More free viewers" now starts with the Zovo extensions most related to this one. Picking one opens its Marketplace page, where you choose to install it.
+- The README has a "Support Zovo" section with GitHub Sponsors and the developer's GitHub profile, and "More tools by Zovo" lists related extensions.
+
 ## 0.2.0 (2026-11-07)
 
 - New rule CD007 (import drift). An `@path` import in `CLAUDE.md`, `CLAUDE.local.md` or `GEMINI.md` that points to a missing file is a warning. Claude Code and Gemini CLI skip a missing import without a warning, so those instructions never load. A quick fix offers the file with the same name when the repo has exactly one.

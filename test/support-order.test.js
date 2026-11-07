@@ -23,5 +23,6 @@ test('More free viewers puts the closest pairs first in each group', () => {
     const w = list.filter((p) => p.live === live).map((p) => support.pairWeight(SELF, p.id));
     for (let i = 1; i < w.length; i++) assert.ok(w[i - 1] >= w[i], `${live ? 'live' : 'queued'} row ${i} is out of order`);
   }
-  assert.equal(list[0].id, 'zovo.skill-shelf');
+  // The first entry is a closest live pair (which one changes as new extensions go live).
+  assert.equal(support.pairWeight(SELF, list[0].id), Math.max(...list.filter((p) => p.live).map((p) => support.pairWeight(SELF, p.id))));
 });

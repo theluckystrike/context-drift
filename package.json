@@ -2,7 +2,7 @@
   "name": "context-drift",
   "displayName": "AGENTS.md & CLAUDE.md Linter (Context Drift)",
   "description": "Lints AGENTS.md, CLAUDE.md and other agent rules for stale commands, paths and versions, broken @imports, and AGENTS.md files over the Codex 32 KiB limit. Offline.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "zovo",
   "license": "MIT",
   "icon": "icon.png",
