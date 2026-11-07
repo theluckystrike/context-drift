@@ -29,52 +29,52 @@ const SELF_ID = "zovo.context-drift";
 const LIVE = [
   [
     "zovo.pdf-viewer-dark",
-    "PDF Viewer & PDF Reader with Dark Mode",
+    "PDF Viewer & PDF Reader",
     "reads PDFs with a real dark mode, search, an outline and thumbnails."
   ],
   [
     "zovo.table-viewer-vscode",
-    "CSV Viewer, Excel Viewer (XLSX) & Parquet Viewer",
+    "XLSX Viewer, Excel Viewer, CSV Viewer & Parquet Viewer",
     "opens CSV, TSV, Excel and Parquet files as a sortable, filterable table."
   ],
   [
     "zovo.docx-viewer-vscode",
-    "DOCX Viewer & Word Viewer with Dark Mode",
+    "DOCX Viewer, Word Viewer & DOCX Preview (Dark Mode)",
     "previews Word and ODT files with dark mode, an outline and search."
   ],
   [
     "zovo.pptx-slide-viewer",
-    "PPTX Viewer & PowerPoint Viewer",
+    "PPTX Viewer & PowerPoint Viewer, PPT Slide Viewer",
     "shows PowerPoint slides, thumbnails and speaker notes."
   ],
   [
     "zovo.zovo-json-tree-viewer",
-    "Large JSON Viewer & JSON Tree",
+    "Large JSON Viewer, JSON Browser & JSON Tree",
     "shows large JSON files as a searchable tree, copies JSONPath and turns arrays of objects into a table."
   ],
   [
     "zovo.zovo-jsonl-viewer",
-    "JSONL Viewer & NDJSON Viewer (JSONL Table)",
+    "JSONL Viewer, Large JSONL Table & NDJSON Viewer",
     "opens JSONL and NDJSON files as a table, as records or as a chat view."
   ],
   [
     "zovo.sqlite-table-viewer",
-    "SQLite Viewer & DB Viewer (Read-Only)",
+    "SQLite Viewer & DB Viewer, Database Viewer (Read-Only)",
     "browses SQLite tables read-only and runs SELECT queries."
   ],
   [
     "zovo.hdf5-netcdf-explorer",
-    "HDF5 & NetCDF Explorer (H5 Viewer)",
+    "NetCDF Viewer & HDF5 Viewer (NC, H5)",
     "browses groups, attributes and values in HDF5 and NetCDF files and plots slices."
   ],
   [
     "zovo.tensor-viewer",
-    "GGUF, Safetensors & NPY Viewer (NumPy Viewer)",
+    "NPZ Viewer & NPY Viewer, GGUF & Safetensors (NumPy Viewer)",
     "shows NPY, NPZ, Safetensors and GGUF tensors with stats and heatmaps."
   ],
   [
     "zovo.video-preview-with-sound",
-    "MP4 Video Player & Video Preview with Sound",
+    "MP4 & MOV Viewer, Video Player with Sound",
     "plays MP4, MOV, MKV and WebM files with their sound."
   ],
   [
@@ -103,85 +103,77 @@ const LIVE = [
     "shows Claude Code and Codex tokens and estimated cost from your local session files."
   ],
   [
+    "zovo.audio-preview-vscode",
+    "Audio Player & WAV Player (MP3, FLAC, LUFS)",
+    "plays audio files with a waveform, a spectrogram and LUFS loudness."
+  ],
+  [
     "zovo.zovo-graphviz-preview",
-    "Graphviz Preview & DOT Viewer",
+    "Graphviz Viewer & DOT Viewer (Live Preview)",
     "shows a live preview of DOT files and exports SVG or PNG."
   ],
   [
     "zovo.tiff-viewer",
-    "TIFF Viewer (16-bit, Float, GeoTIFF)",
+    "TIFF Viewer & TIF Viewer (16-bit, GeoTIFF)",
     "opens 16-bit, float, multi-page and GeoTIFF images."
   ],
   [
     "zovo.arrow-avro-viewer",
-    "Avro Viewer, Arrow Viewer & Feather Viewer",
+    "Avro Viewer, Apache Arrow Viewer & Feather Viewer",
     "opens Avro, Arrow and Feather files as a paged table."
   ],
   [
     "zovo.eml-viewer",
-    "EML Viewer & MBOX Email Viewer",
+    "EML Viewer, Email Headers & MBOX Viewer",
     "reads EML, EMLX and MBOX email files with remote images blocked."
   ],
   [
     "zovo.3d-model-viewer",
-    "3D Model Viewer (GLB, glTF, STL, OBJ, PLY)",
+    "STL Viewer, OBJ Viewer, GLB & glTF Viewer",
     "views GLB, glTF, STL, OBJ, PLY and 3MF models."
   ],
   [
     "zovo.zovo-pickle-viewer",
-    "PKL Viewer & Pickle Viewer",
+    "Pickle Viewer & PKL Viewer (No Python)",
     "opens Python pickle files without Python and never runs their code."
   ],
   [
     "zovo.dicom-nifti-viewer",
-    "DICOM Viewer & NIfTI Viewer for CT and MRI",
+    "DICOM Viewer, MRI Viewer & CT Viewer (NIfTI)",
     "opens CT and MRI scans, DICOM folders and NIfTI volumes with window presets and three views."
-  ]
-];
-const QUEUED = [
-  [
-    "zovo.audio-preview-vscode",
-    "Audio Preview & Loudness Meter",
-    "plays audio files with a waveform, a spectrogram and LUFS loudness.",
-    "https://github.com/theluckystrike/audio-preview-vscode"
-  ],
-  [
-    "zovo.zip-archive-explorer",
-    "ZIP Viewer & Archive Explorer (JAR, TAR, GZ)",
-    "browses ZIP, JAR, VSIX, TAR and GZ files, opens entries in tabs and extracts them safely.",
-    "https://github.com/theluckystrike/archive-explorer-vscode"
-  ],
-  [
-    "zovo.zovo-gcode-viewer",
-    "GCode Viewer & 3D Print Preview",
-    "shows GCode toolpaths in 3D layer by layer, with print time and filament use.",
-    "https://github.com/theluckystrike/gcode-viewer-vscode"
   ],
   [
     "zovo.zovo-epub-reader",
-    "EPUB Reader & EPUB Viewer",
-    "reads EPUB books with a table of contents, search and light, sepia or dark themes.",
-    "https://github.com/theluckystrike/epub-reader-vscode"
+    "EPUB Viewer, EPUB Reader & Ebook Reader",
+    "reads EPUB books with a table of contents, search and light, sepia or dark themes."
   ],
   [
     "zovo.zovo-har-viewer",
-    "HAR Viewer & HTTP Archive Viewer",
-    "opens HAR files from browser DevTools with a timing waterfall, filters and a redacted copy for sharing.",
-    "https://github.com/theluckystrike/har-viewer-vscode"
-  ],
-  [
-    "zovo.font-viewer-vscode",
-    "Font Viewer & Font Preview (TTF, OTF, WOFF)",
-    "opens TTF, OTF, WOFF, WOFF2 and TTC fonts with a glyph grid, a type tester with variable axes and the license fields.",
-    "https://github.com/theluckystrike/font-viewer-vscode"
+    "HAR Viewer & HAR File Analyzer (HTTP Archive)",
+    "opens HAR files from browser DevTools with a timing waterfall, filters and a redacted copy for sharing."
   ],
   [
     "zovo.zovo-file-viewers",
     "File Viewers Pack",
-    "installs the PDF, table, Word, PowerPoint, HDF5 and tensor viewers in one step.",
-    "https://github.com/theluckystrike/zovo-file-viewers"
+    "installs the PDF, table, Word, PowerPoint, HDF5 and tensor viewers in one step."
+  ],
+  [
+    "zovo.zip-archive-explorer",
+    "ZIP Viewer & Archive Viewer (JAR, TAR, GZ)",
+    "browses ZIP, JAR, VSIX, TAR and GZ files, opens entries in tabs and extracts them safely."
+  ],
+  [
+    "zovo.zovo-gcode-viewer",
+    "GCode Viewer, CNC Viewer & 3D Print Preview",
+    "shows GCode toolpaths in 3D layer by layer, with print time and filament use."
+  ],
+  [
+    "zovo.font-viewer-vscode",
+    "Font Viewer, TTF Viewer, OTF & WOFF Viewer",
+    "opens TTF, OTF, WOFF, WOFF2 and TTC fonts with a glyph grid, a type tester with variable axes and the license fields."
   ]
 ];
+const QUEUED = [];
 
 // [id, id, weight]. Products that people use together. The list for one product shows its closest pairs first
 // (live ones before queued ones). Weights come from how often rival listings name both formats (out/I2.md

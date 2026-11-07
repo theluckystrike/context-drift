@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 (2026-11-08)
+
+- The "More free viewers" list and the README now use the current Marketplace names and include the newest Zovo extensions: ZIP, GCode, EPUB, HAR, font and audio viewers.
+
 ## 0.2.2 (2026-11-07)
 
 - CD008 points at the right line in AGENTS.md files with Windows (CRLF) line endings. It counted 1 byte for each line ending instead of 2, so in a 39 KiB file it pointed about 25 lines too far down.

@@ -13,8 +13,11 @@ test('More free viewers lists live extensions first, once each, without this one
   assert.ok(list.every((p) => p.id !== SELF));
   assert.equal(new Set(list.map((p) => p.id)).size, list.length);
   const firstQueued = list.findIndex((p) => !p.live);
-  assert.ok(firstQueued > 0);
-  assert.ok(list.slice(firstQueued).every((p) => !p.live));
+  // Every Zovo extension can be live (true since 2026-11-08), so there may be no queued rows.
+  if (firstQueued !== -1) {
+    assert.ok(firstQueued > 0);
+    assert.ok(list.slice(firstQueued).every((p) => !p.live));
+  }
 });
 
 test('More free viewers puts the closest pairs first in each group', () => {
